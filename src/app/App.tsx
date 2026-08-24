@@ -218,7 +218,21 @@ export const App = (): React.ReactElement => {
     <div className="app">
       <aside className="panel">
         <h1>NamR</h1>
-        <p className="sub">Script name tags you can print.</p>
+        <p className="sub">
+          Script name tags for wedding tables, parties and desks — printable
+          straight off the bed.
+        </p>
+        <ul className="pitch">
+          <li><b>One connected piece.</b> Letters are joined into a single solid,
+            so a tag prints without supports, glue or assembly and cannot fall apart.</li>
+          <li><b>A whole guest list at once.</b> Paste names or drop in a CSV and
+            every tag is packed onto printer beds, ready to slice.</li>
+          <li><b>Reads face-down on the glass</b>, so the side you look at comes
+            off the printer smooth.</li>
+          <li><b>Polish and Latin Extended</b> throughout — ą ć ę ł ń ó ś ź ż all
+            keep their accents, joined to the letter they belong to.</li>
+          <li><b>Nothing leaves your browser.</b> No account, no upload, no server.</li>
+        </ul>
 
         <div className="tabs">
           <button className={tab === 'single' ? 'on' : ''} onClick={() => setTab('single')}>One tag</button>
@@ -310,7 +324,7 @@ export const App = (): React.ReactElement => {
              target="_blank" rel="noreferrer noopener">MyFonts</a>.
           Yellowtail is the closest free stand-in.
         </p>
-        <span className="version">v{__APP_VERSION__}</span>
+        <p className="version">NamR v{__APP_VERSION__}</p>
       </aside>
 
       <main className="stage">
@@ -329,7 +343,8 @@ export const App = (): React.ReactElement => {
             onClose={() => setEditing(false)}
           />
         )}
-        <div className="hud" hidden={editing}>
+        {!editing && (
+        <div className="hud">
           {err && <div className="bad">{err}</div>}
           {info && (
             <>
@@ -349,6 +364,7 @@ export const App = (): React.ReactElement => {
           {info?.substituted.length ? <span className="warn">swapped {info.substituted.join(' ')}</span> : null}
           {info?.warnings.map((w) => <span key={w} className="warn">{w}</span>)}
         </div>
+        )}
       </main>
     </div>
   );

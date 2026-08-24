@@ -1,11 +1,27 @@
 # NamR
 
-Browser-based generator of 3D-printable script name tags for wedding tables,
-parties and desks. Type a name or import a CSV, get STL/3MF files — one per
-tag, or packed into printer-bed batches.
+**[mr4lexndr.github.io/NamR](https://mr4lexndr.github.io/NamR/)**
 
-Everything runs client-side, so guest names never leave the browser and the
-whole thing hosts as a static site on GitHub Pages.
+Turn a name — or a whole guest list — into 3D printable script name tags for
+wedding tables, parties and desks. Type it, see it, download STL or 3MF.
+
+The hard part is not drawing the letters, it is making them hold together.
+Joined script is full of gaps: a capital that never quite reaches the next
+letter, an i-tittle floating free, two lines that only touch if you nudge them
+into each other. Left alone that prints as a heap of loose pieces. NamR closes
+those gaps the way a signwriter would — tightening the spacing, sliding the
+surname to where the two lines interlock, stemming each accent to its own
+letter — and only bridges what is genuinely too far apart. Every tag comes out
+as **one connected solid**: no supports, no glue, no assembly.
+
+- **Batch the whole list.** Paste names or drop in a CSV, and every tag is
+  packed onto printer beds and zipped up with a manifest, ready to slice.
+- **Reads face-down on the glass**, so the visible side comes off smooth.
+- **Polish and Latin Extended** throughout — ą ć ę ł ń ó ś ź ż keep their
+  accents, joined to the letter they belong to.
+- **Nine script faces bundled**, or load your own; it is parsed in the browser.
+- **Nothing is uploaded.** No account, no server. It is a static site, so guest
+  names never leave your machine.
 
 ## Status
 

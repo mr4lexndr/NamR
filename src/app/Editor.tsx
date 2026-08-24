@@ -62,6 +62,9 @@ export const Editor = ({
     return { x: p.x, y: -p.y };
   };
 
+  /** Handle radius in model units that renders at a constant screen size. */
+  const handleR = view.w * 0.006;
+
   const path = (ring: number[]): string => {
     let d = '';
     for (let i = 0; i < ring.length; i += 2) {
@@ -151,10 +154,14 @@ export const Editor = ({
               x1={b.a.x} y1={-b.a.y} x2={b.b.x} y2={-b.b.y} strokeWidth={b.width} />
             {/* fat invisible hit area: a 1mm line is unclickable */}
             <line className="ehit"
-              x1={b.a.x} y1={-b.a.y} x2={b.b.x} y2={-b.b.y} strokeWidth={Math.max(b.width, 2.4)}
-              onClick={(e) => { e.stopPropagation(); remove(b.id); }} />
+              x1={b.a.x} y1={-b.a.y} x2={b.b.x} y2={-b.b.y}
+              strokeWidth={Math.max(b.width, view.w * 0.012)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); remove(b.id); }}>
+              <title>click to remove</title>
+            </line>
             {(['a', 'b'] as const).map((end) => (
-              <circle key={end} className="ehandle" r={1.0}
+              <circle key={end} className="ehandle" r={handleR}
                 cx={b[end].x} cy={-b[end].y}
                 onPointerDown={(e) => {
                   e.stopPropagation();
@@ -180,7 +187,7 @@ export const Editor = ({
           <line className="eghost" x1={grab.a.x} y1={-grab.a.y} x2={grab.b.x} y2={-grab.b.y} strokeWidth={1.1} />
         )}
 
-        {pending && <circle className="epending" cx={pending.x} cy={-pending.y} r={1.1} />}
+        {pending && <circle className="epending" cx={pending.x} cy={-pending.y} r={handleR} />}
         {pending && hover && (
           <line className="eghost" x1={pending.x} y1={-pending.y} x2={hover.x} y2={-hover.y} strokeWidth={1.1} />
         )}
