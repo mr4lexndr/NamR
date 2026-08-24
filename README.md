@@ -19,8 +19,8 @@ whole thing hosts as a static site on GitHub Pages.
 | 3D mesh (60° revolve) | done |
 | STL / 3MF export | done |
 | Web UI + 3D preview | done |
-| Bed packing / batches | not started |
-| CSV bulk import | not started |
+| CSV bulk import | done |
+| Bed packing / batches | done |
 | Bridge editor | not started |
 
 Validated on 12 Polish names: all resolve to a single watertight, correctly
@@ -67,6 +67,9 @@ src/geom/
   sweep.ts      profile → watertight mesh (60° revolve)
   export.ts     binary STL, 3MF, manifold check
   tag.ts        the whole pipeline for one tag
+  csv.ts        guest list parsing, delimiter sniffing
+  pack.ts       shelf packing onto printer beds
+  batch.ts      many names -> plates -> zip + manifest
 ```
 
 ### How a tag is built
@@ -91,6 +94,22 @@ src/geom/
    error, and clears the slivers that make ear-clipping drop a triangle.
 8. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
    Checked watertight before export.
+
+### Batches
+
+A guest list goes in as CSV or pasted text. The delimiter is sniffed rather
+than assumed — Polish Excel writes semicolons — the BOM is stripped, a header
+row is detected if present, and a single-column file is split on the last
+space so multi-part given names survive.
+
+Tags are packed tallest-first onto shelves. Name tags are long and shallow
+with widths that vary a lot and depths that barely do, so they form full rows
+naturally; a shelf gets close to optimal on that shape while staying
+predictable, which matters when you have to recognise the plate in a slicer.
+16 names land on two 220mm plates at 55% coverage.
+
+The download is a zip of either one file per plate or one per tag, plus a
+`manifest.csv` naming every tag, its plate and any warning.
 
 ### Two library findings
 
