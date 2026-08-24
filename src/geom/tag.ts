@@ -4,7 +4,7 @@ import { bboxOf } from './types';
 import type { Geom } from './clipper';
 import { substituteMissing, textToContours } from './text';
 import type { Bridge, ConnectOptions } from './connect';
-import { DEFAULT_CONNECT, connect, solveLineOverlap, translateContours } from './connect';
+import { DEFAULT_CONNECT, connect, solveLineOverlap, tightenLine, translateContours } from './connect';
 import type { Mesh, SweepOptions } from './sweep';
 import { DEFAULT_SWEEP, meshBounds, sweepTag } from './sweep';
 import { simplifyPolys } from './simplify';
@@ -103,8 +103,20 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
     if (h > 0) em = (REF * params.frontHeight) / h;
   }
 
-  const top = lineOf(params.first, 0, em);
-  let bottom = lineOf(params.last, 1, em);
+  // Connection settings are quoted at a 20mm em; scale them so a tag behaves
+  // the same at any size. Areas scale with the square.
+  const k = em / 20;
+  const conn = {
+    ...params.connect,
+    letterTighten: params.connect.letterTighten * k,
+    tightenOverlap: params.connect.tightenOverlap * k,
+    minHoleArea: params.connect.minHoleArea * k * k,
+  };
+
+  // Close the gaps inside each line before the lines are positioned, so the
+  // overlap search sees the shapes it will actually have to weld.
+  const top = tightenLine(lineOf(params.first, 0, em), geom, conn);
+  let bottom = tightenLine(lineOf(params.last, 1, em), geom, conn);
 
   if (top.length === 0 && bottom.length === 0) {
     throw new Error('nothing to draw');
@@ -127,18 +139,18 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
       geom.union(top.map((c) => c.ring)),
       geom.union(bottom.map((c) => c.ring)),
       geom,
-      params.connect,
+      conn,
     );
     overlapY = solved.dy;
     naturalWeld = solved.welded;
   }
   bottom = translateContours(bottom, 0, overlapY);
 
-  const solved = connect([...top, ...bottom], geom, params.connect, params.manualBridges);
+  const solved = connect([...top, ...bottom], geom, conn, params.manualBridges);
   warnings.push(...solved.warnings);
   // Only worth mentioning if bridging did not rescue it: the lines not
   // touching on their own is normal on a light face.
-  if (!naturalWeld && solved.lineLinks < params.connect.minLineLinks) {
+  if (!naturalWeld && solved.lineLinks < conn.minLineLinks) {
     warnings.push('the lines do not overlap; try a deeper line overlap');
   }
 

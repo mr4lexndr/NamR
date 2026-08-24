@@ -6,6 +6,7 @@ import type { Bridge } from '../geom/connect';
 import { DEFAULT_TAG } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import type { BuildResponse, Request, RequestInit_ } from './worker';
+import { clearStoredFont, loadStoredFont, saveFont } from './fontStore';
 
 /** Open-licensed connected scripts, all verified for full Polish coverage. */
 const BUNDLED = [
@@ -31,6 +32,7 @@ interface Settings {
   axisOffset: number;
   weldRadius: number;
   bridgeWidth: number;
+  letterTighten: number;
   filletRadius: number;
   minHoleArea: number;
   overlapY: number | null;
@@ -48,6 +50,7 @@ const INITIAL: Settings = {
   axisOffset: 5,
   weldRadius: DEFAULT_TAG.connect.weldRadius,
   bridgeWidth: DEFAULT_TAG.connect.bridgeWidth,
+  letterTighten: DEFAULT_TAG.connect.letterTighten,
   filletRadius: DEFAULT_TAG.connect.filletRadius,
   minHoleArea: DEFAULT_TAG.connect.minHoleArea,
   overlapY: null,
@@ -68,6 +71,7 @@ const toParams = (s: Settings): TagParams => ({
     ...DEFAULT_TAG.connect,
     weldRadius: s.weldRadius,
     bridgeWidth: s.bridgeWidth,
+    letterTighten: s.letterTighten,
     filletRadius: s.filletRadius,
     minHoleArea: s.minHoleArea,
   },
@@ -145,10 +149,22 @@ export const App = (): React.ReactElement => {
     }
   }, [loadFontBuffer]);
 
+  // Prefer a font the user loaded before; fall back to the bundled default.
   useEffect(() => {
     if (!worker.current) return;
-    void pickBundled(BUNDLED[0]!.file, BUNDLED[0]!.label);
-  }, [pickBundled]);
+    let dead = false;
+    (async () => {
+      const stored = await loadStoredFont();
+      if (dead) return;
+      if (stored) {
+        await loadFontBuffer(stored.data, stored.name);
+        setBusy(false);
+        return;
+      }
+      await pickBundled(BUNDLED[0]!.file, BUNDLED[0]!.label);
+    })();
+    return () => { dead = true; };
+  }, [pickBundled, loadFontBuffer]);
 
   // Rebuild whenever settings change, coalescing bursts from slider drags.
   const params = useMemo(() => toParams(s), [s]);
@@ -177,7 +193,11 @@ export const App = (): React.ReactElement => {
 
   const onFont = async (file: File) => {
     setBusy(true);
-    await loadFontBuffer(await file.arrayBuffer(), file.name.replace(/\.[^.]+$/, ''));
+    const label = file.name.replace(/\.[^.]+$/, '');
+    const buf = await file.arrayBuffer();
+    await loadFontBuffer(buf, label);
+    // Kept on this machine only, so it is there next time without re-picking.
+    await saveFont(label, buf);
     setBusy(false);
   };
 
@@ -229,6 +249,9 @@ export const App = (): React.ReactElement => {
 
         <details>
           <summary>Connection</summary>
+          <Slider label="Letter tightening" unit="mm" min={0} max={4} step={0.1}
+            value={s.letterTighten} onChange={(v) => num('letterTighten', v)}
+            hint="Pull letters together to join them before adding struts" />
           <Slider label="Weld radius" unit="mm" min={0} max={1.5} step={0.05}
             value={s.weldRadius} onChange={(v) => num('weldRadius', v)}
             hint={`Closes gaps up to ${(s.weldRadius * 2).toFixed(2)}mm`} />
@@ -266,7 +289,7 @@ export const App = (): React.ReactElement => {
           <select value={BUNDLED.some((b) => b.label === fontName) ? fontName : ''}
             onChange={(e) => {
               const b = BUNDLED.find((q) => q.label === e.target.value);
-              if (b) void pickBundled(b.file, b.label);
+              if (b) { void clearStoredFont(); void pickBundled(b.file, b.label); }
             }}>
             {BUNDLED.map((b) => <option key={b.label} value={b.label}>{b.label} — {b.note}</option>)}
             {!BUNDLED.some((b) => b.label === fontName) && <option value="">{fontName} (yours)</option>}
