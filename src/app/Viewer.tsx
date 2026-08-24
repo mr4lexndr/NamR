@@ -81,7 +81,7 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
 
     const resize = (): void => {
       const w = el.clientWidth, h = el.clientHeight;
-      renderer.setSize(w, h, false);
+      renderer.setSize(w, h);
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
       fit();

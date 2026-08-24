@@ -13,6 +13,11 @@
 
 * { box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -20,13 +25,15 @@ body {
   font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.app { display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: 320px 1fr; height: 100dvh; overflow: hidden; }
 
 .panel {
   background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 20px 18px 28px;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
 }
 
 h1 { font-size: 20px; margin: 0; letter-spacing: 0.02em; }
@@ -74,10 +81,10 @@ button.link {
   padding: 0 0 12px; font-size: 11px; text-decoration: underline;
 }
 
-.stage { position: relative; min-width: 0; }
+.stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .viewer { position: absolute; inset: 0; cursor: grab; touch-action: none; }
 .viewer:active { cursor: grabbing; }
-.viewer canvas { display: block; }
+.viewer canvas { display: block; width: 100% !important; height: 100% !important; }
 .hint {
   position: absolute; top: 12px; right: 16px; font-size: 11px;
   color: var(--dim); pointer-events: none; opacity: 0.75;
@@ -102,7 +109,7 @@ button.link {
 .hud .dim { opacity: 0.7; }
 
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: 1fr 340px; }
+  .app { grid-template-columns: 1fr; grid-template-rows: 45dvh 55dvh; }
   .panel { border-right: none; border-top: 1px solid var(--line); order: 2; }
   .stage { order: 1; }
 }
@@ -160,3 +167,36 @@ input[type='number'] {
   width: 100%; padding: 8px 10px; background: #0f1115;
   border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 13px;
 }
+
+.version {
+  position: absolute; left: 18px; bottom: 10px;
+  font-size: 10.5px; color: var(--dim); opacity: 0.6;
+}
+.panel { position: relative; padding-bottom: 34px; }
+.help a { color: var(--accent); }
+
+.editor {
+  position: absolute; inset: 0; background: rgba(10, 12, 15, 0.95);
+  display: flex; flex-direction: column; padding: 14px 16px 10px;
+}
+.etoolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.etoolbar .seg { margin: 0; flex: none; width: 260px; }
+.ehint { font-size: 11.5px; color: var(--dim); flex: 1; }
+.etoolbar .link { padding: 0; }
+
+.ecanvas { flex: 1; min-height: 0; width: 100%; cursor: crosshair; touch-action: none; }
+.eshape { fill: #3b4048; stroke: #565d68; stroke-width: 0.15; }
+.ebridge { stroke-linecap: round; }
+.ebridge.stem { stroke: #e0483a; }
+.ebridge.auto { stroke: #3f86d8; }
+.ebridge.manual { stroke: #4ea86a; cursor: pointer; }
+.epending { fill: var(--accent); }
+.eghost { stroke: var(--accent); stroke-dasharray: 1.5 1.5; stroke-linecap: round; opacity: 0.8; }
+
+.elegend { display: flex; gap: 16px; align-items: center; font-size: 11px; color: var(--dim); margin: 6px 0 0; }
+.sw { width: 16px; height: 3px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: middle; }
+.sw.stem { background: #e0483a; }
+.sw.auto { background: #3f86d8; }
+.sw.manual { background: #4ea86a; }
+
+.bedmap .tagpath { fill: color-mix(in srgb, var(--accent) 70%, transparent); stroke: none; }

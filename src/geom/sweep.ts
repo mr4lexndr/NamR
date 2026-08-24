@@ -181,6 +181,32 @@ export const sweepTag = (polys: Poly[], opts: SweepOptions): Mesh => {
   return mergeMeshes(polys.map((p) => sweepPoly(p, opts, yAxis)));
 };
 
+/**
+ * Lay a tag on the bed reading-face-down.
+ *
+ * The face you read is the one at the far end of the sweep, whose normal is
+ * (0, -sin a, cos a). Rotating the tag by 180 - a about X turns that normal to
+ * -Z, so it beds against the glass and comes off with the smooth finish.
+ * The as-built pose instead rests on the alpha = 0 cap, which leaves the
+ * readable face tilted in the air.
+ */
+export const orientForPrint = (mesh: Mesh, opts: SweepOptions): Mesh => {
+  const theta = Math.PI - (opts.angleDeg * Math.PI) / 180;
+  const c = Math.cos(theta), s = Math.sin(theta);
+  const p = new Float32Array(mesh.positions.length);
+  let zMin = Infinity;
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    const y = mesh.positions[i + 1]!, z = mesh.positions[i + 2]!;
+    p[i] = mesh.positions[i]!;
+    p[i + 1] = y * c - z * s;
+    p[i + 2] = y * s + z * c;
+    if (p[i + 2]! < zMin) zMin = p[i + 2]!;
+  }
+  // Rotation drops the part below the bed; set it back down on z = 0.
+  for (let i = 2; i < p.length; i += 3) p[i]! -= zMin;
+  return { positions: p, indices: mesh.indices };
+};
+
 export const meshBounds = (m: Mesh) => {
   let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
   for (let i = 0; i < m.positions.length; i += 3) {

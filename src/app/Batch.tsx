@@ -3,7 +3,7 @@ import type { TagParams } from '../geom/tag';
 import { parseNames } from '../geom/csv';
 import type { NameRow } from '../geom/csv';
 import { DEFAULT_BED } from '../geom/pack';
-import type { Bed, Plate } from '../geom/pack';
+import type { Bed, Placement, Plate } from '../geom/pack';
 import type { Format, Grouping, TagReport } from '../geom/batch';
 import type { BuildResponse, RequestInit_ } from './worker';
 
@@ -20,6 +20,41 @@ const PRESETS: { label: string; w: number; d: number }[] = [
   { label: 'A1 mini · 180 × 180', w: 180, d: 180 },
 ];
 const CUSTOM = 'custom';
+
+/**
+ * The tag's own outline drawn into its slot, so a plate is checkable at a
+ * glance: you can read which name landed where instead of counting anonymous
+ * rectangles.
+ */
+const TagShape = ({ rep, pl }: { rep: TagReport; pl: Placement }): React.ReactElement | null => {
+  if (!rep.outline?.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rep.outline) {
+    for (let i = 0; i < r.length; i += 2) {
+      x0 = Math.min(x0, r[i]!); x1 = Math.max(x1, r[i]!);
+      y0 = Math.min(y0, r[i + 1]!); y1 = Math.max(y1, r[i + 1]!);
+    }
+  }
+  const w = x1 - x0, h = y1 - y0;
+  if (!(w > 0 && h > 0)) return null;
+
+  const k = Math.min(pl.w / (pl.rotated ? h : w), pl.h / (pl.rotated ? w : h));
+  const d = rep.outline
+    .map((r) => {
+      let out = '';
+      for (let i = 0; i < r.length; i += 2) {
+        out += `${i ? 'L' : 'M'}${((r[i]! - x0) * k).toFixed(2)} ${((y1 - r[i + 1]!) * k).toFixed(2)}`;
+      }
+      return `${out}Z`;
+    })
+    .join(' ');
+
+  // Rotated slots get a quarter turn about the slot's own corner.
+  const t = pl.rotated
+    ? `translate(${pl.x + pl.w} ${pl.y}) rotate(90)`
+    : `translate(${pl.x} ${pl.y})`;
+  return <path className="tagpath" fillRule="evenodd" transform={t} d={d} />;
+};
 
 export const Batch = ({ params, send, ready }: Props): React.ReactElement => {
   const [rows, setRows] = useState<NameRow[]>([]);
@@ -163,11 +198,16 @@ export const Batch = ({ params, send, ready }: Props): React.ReactElement => {
               <figure key={i}>
                 <svg viewBox={`0 0 ${bed.width} ${bed.depth}`} className="bedmap">
                   <rect x="0" y="0" width={bed.width} height={bed.depth} className="bedbg" />
-                  {p.placements.map((pl) => (
-                    <rect key={pl.index} x={pl.x} y={pl.y} width={pl.w} height={pl.h} className="slot">
-                      <title>{reports[pl.index]?.first} {reports[pl.index]?.last}</title>
-                    </rect>
-                  ))}
+                  {p.placements.map((pl) => {
+                    const rep = reports[pl.index];
+                    return (
+                      <g key={pl.index}>
+                        <rect x={pl.x} y={pl.y} width={pl.w} height={pl.h} className="slot" />
+                        {rep?.outline && <TagShape rep={rep} pl={pl} />}
+                        <title>{rep?.first} {rep?.last}</title>
+                      </g>
+                    );
+                  })}
                 </svg>
                 <figcaption>Plate {i + 1} · {p.placements.length} tags</figcaption>
               </figure>

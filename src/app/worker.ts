@@ -5,6 +5,7 @@ import { loadFont } from '../geom/text';
 import { buildTag } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import { toStl, to3mf } from '../geom/export';
+import { orientForPrint } from '../geom/sweep';
 import { buildBatch } from '../geom/batch';
 import type { BatchOptions, TagReport } from '../geom/batch';
 import type { NameRow } from '../geom/csv';
@@ -51,7 +52,7 @@ export interface BuildResponse {
   indices?: Uint32Array;
   /** Solved 2D outline, for the overlay and the future bridge editor. */
   outline?: number[][];
-  bridges?: { a: { x: number; y: number }; b: { x: number; y: number }; width: number; kind: string }[];
+  bridges?: { id: string; a: { x: number; y: number }; b: { x: number; y: number }; width: number; kind: string }[];
   stl?: Uint8Array;
   mf?: Uint8Array;
   info?: {
@@ -114,7 +115,7 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       outline: r.polys.flatMap((p) =>
         [p.outer, ...p.holes].map((ring) => ring.flatMap((q) => [q.x, q.y])),
       ),
-      bridges: r.bridges.map((b) => ({ a: b.a, b: b.b, width: b.width, kind: b.kind })),
+      bridges: r.bridges.map((b) => ({ id: b.id, a: b.a, b: b.b, width: b.width, kind: b.kind })),
       info: {
         components: r.components,
         lineLinks: r.lineLinks,
@@ -131,9 +132,11 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
         ms,
       },
     };
-    if (req.formats?.includes('stl')) res.stl = toStl(r.mesh, `NamR ${req.params.first} ${req.params.last}`);
+    // Preview keeps the as-built pose; anything downloaded is bedded.
+    const printed = req.formats?.length ? orientForPrint(r.mesh, req.params.sweep) : r.mesh;
+    if (req.formats?.includes('stl')) res.stl = toStl(printed, `NamR ${req.params.first} ${req.params.last}`);
     if (req.formats?.includes('3mf')) {
-      res.mf = to3mf([{ mesh: r.mesh, name: `${req.params.first} ${req.params.last}` }], [{ objectIndex: 0 }]);
+      res.mf = to3mf([{ mesh: printed, name: `${req.params.first} ${req.params.last}` }], [{ objectIndex: 0 }]);
     }
 
     const transfer: Transferable[] = [res.positions!.buffer, res.indices!.buffer];

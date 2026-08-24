@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Viewer } from './Viewer';
 import { Batch } from './Batch';
+import { Editor } from './Editor';
+import type { Bridge } from '../geom/connect';
 import { DEFAULT_TAG } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import type { BuildResponse, Request, RequestInit_ } from './worker';
@@ -33,6 +35,7 @@ interface Settings {
   minHoleArea: number;
   overlapY: number | null;
   nudgeX: number;
+  manual: Bridge[];
 }
 
 const INITIAL: Settings = {
@@ -49,6 +52,7 @@ const INITIAL: Settings = {
   minHoleArea: DEFAULT_TAG.connect.minHoleArea,
   overlapY: null,
   nudgeX: 0,
+  manual: [],
 };
 
 const toParams = (s: Settings): TagParams => ({
@@ -59,6 +63,7 @@ const toParams = (s: Settings): TagParams => ({
   frontHeight: s.sizeMode === 'front' ? s.frontHeight : undefined,
   nudgeX: s.nudgeX,
   overlapY: s.overlapY ?? undefined,
+  manualBridges: s.manual,
   connect: {
     ...DEFAULT_TAG.connect,
     weldRadius: s.weldRadius,
@@ -88,6 +93,7 @@ export const App = (): React.ReactElement => {
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<'single' | 'batch'>('single');
+  const [editing, setEditing] = useState(false);
 
   const worker = useRef<Worker | null>(null);
   const nextId = useRef(1);
@@ -245,6 +251,10 @@ export const App = (): React.ReactElement => {
             value={s.nudgeX} onChange={(v) => num('nudgeX', v)} />
         </details>
 
+        <button className="wide" disabled={!info} onClick={() => setEditing((v) => !v)}>
+          {editing ? 'Close editor' : 'Edit connections…'}
+        </button>
+
         <div className="row">
           <button className="primary" disabled={busy || !info} onClick={() => void save('3mf')}>Download 3MF</button>
           <button disabled={busy || !info} onClick={() => void save('stl')}>STL</button>
@@ -268,12 +278,33 @@ export const App = (): React.ReactElement => {
         </label>
         <p className="note">
           Fonts are read in your browser — nothing about your guests is uploaded.
-          If you own Brush Script MT, load it here.
         </p>
+        <p className="help dimmer">
+          Want <b>Brush Script MT</b>? It belongs to the Monotype foundry and
+          cannot be bundled here, but you can load your own copy above. It ships
+          with Microsoft Office and macOS, so check{' '}
+          <code>/System/Library/Fonts/Supplemental/</code> or{' '}
+          <code>C:\Windows\Fonts\</code> first — otherwise it is sold at{' '}
+          <a href="https://www.myfonts.com/collections/brush-script-font-mti"
+             target="_blank" rel="noreferrer noopener">MyFonts</a>.
+          Yellowtail is the closest free stand-in.
+        </p>
+        <span className="version">v{__APP_VERSION__}</span>
       </aside>
 
       <main className="stage">
         <Viewer positions={res?.positions ?? null} indices={res?.indices ?? null} />
+        {editing && res?.outline && (
+          <Editor
+            outline={res.outline}
+            bridges={res.bridges ?? []}
+            manual={s.manual}
+            onManualChange={(manual) => setS((p) => ({ ...p, manual }))}
+            offset={{ x: s.nudgeX, y: s.overlapY ?? info?.overlapY ?? 0 }}
+            onOffsetChange={({ x, y }) => setS((p) => ({ ...p, nudgeX: x, overlapY: y }))}
+            onClose={() => setEditing(false)}
+          />
+        )}
         <div className="hud">
           {err && <div className="bad">{err}</div>}
           {info && (

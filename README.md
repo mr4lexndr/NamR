@@ -92,9 +92,11 @@ src/geom/
    over inter-island distance: n islands need exactly n−1 bridges, each placed
    where the letters already almost touch.
 8. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
-   then holes under `minHoleArea` are dropped — welding two strokes that pass
-   close together traps slivers of background that read as defects, while real
-   counters in a 20mm script run 5mm² and up.
+   then holes that welding invented are dropped. Size cannot tell a trapped
+   sliver from a real counter — they overlap in area — but provenance can: a
+   counter was already a hole before anything was welded, a sliver was open
+   background that only became enclosed once two strokes were joined. So a
+   hole survives exactly when it lies inside a hole of the raw outline.
 9. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
    error, and clears the slivers that make ear-clipping drop a triangle.
 10. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
@@ -102,9 +104,11 @@ src/geom/
 
 ### Print orientation
 
-The `alpha = 0` face lies exactly on `z = 0`, so a tag lands text-face-down on
-the bed. The first layer is the whole name outline — maximum adhesion, no
-supports, and the visible face is the one against the glass.
+The face you read is the one at the far end of the sweep, whose normal is
+`(0, -sin a, cos a)`. Exports rotate the tag by `180 - a` about X so that
+normal becomes `-Z` and the readable face beds against the glass, coming off
+with the smooth finish. The preview keeps the as-built pose, which reads
+better on screen.
 
 ### Batches
 
