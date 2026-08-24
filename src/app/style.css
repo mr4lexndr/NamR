@@ -144,3 +144,16 @@ button.wide { width: 100%; margin-bottom: 12px; }
 .problems li b { color: var(--ink); font-weight: 600; }
 .problems li.warn b { color: var(--warn); }
 .problems li.bad b { color: var(--bad); }
+
+.help { font-size: 11.5px; color: var(--dim); margin: 0 0 8px; line-height: 1.5; }
+.help b { color: var(--ink); font-weight: 600; }
+.help.dimmer { opacity: 0.8; margin-bottom: 12px; }
+.sample {
+  margin: 0 0 10px; padding: 8px 10px; background: #0f1115;
+  border: 1px solid var(--line); border-radius: 6px;
+  font: 12px/1.6 ui-monospace, monospace; color: var(--ink); white-space: pre;
+}
+input[type='number'] {
+  width: 100%; padding: 8px 10px; background: #0f1115;
+  border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 13px;
+}
