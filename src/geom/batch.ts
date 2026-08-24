@@ -7,7 +7,7 @@ import type { NameRow } from './csv';
 import type { Bed, Plate } from './pack';
 import { footprint, packBeds, placeMesh } from './pack';
 import { to3mf, toStl } from './export';
-import { mergeMeshes } from './sweep';
+import { mergeMeshes, orientForPrint } from './sweep';
 import type { Mesh } from './sweep';
 
 export type Format = 'stl' | '3mf';
@@ -30,6 +30,8 @@ export interface TagReport {
   substituted: string[];
   w: number;
   h: number;
+  /** Flattened rings of the solved outline, for drawing the plate preview. */
+  outline?: number[][];
   error?: string;
 }
 
@@ -63,13 +65,14 @@ export const buildBatch = (
     let report: TagReport;
     try {
       const r = buildTag(font, geom, { ...opts.params, first: row.first, last: row.last });
-      meshes.set(index, r.mesh);
+      meshes.set(index, orientForPrint(r.mesh, opts.params.sweep));
       const fp = footprint(r.mesh);
       report = {
         index, first: row.first, last: row.last,
         ok: r.ok, components: r.components,
         warnings: r.warnings, substituted: r.substituted,
         w: fp.w, h: fp.h,
+        outline: r.polys.flatMap((p) => [p.outer, ...p.holes].map((ring) => ring.flatMap((q) => [q.x, q.y]))),
       };
     } catch (e) {
       report = {

@@ -121,6 +121,7 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   }
 
   let overlapY = params.overlapY ?? 0;
+  let naturalWeld = true;
   if (params.overlapY === undefined && top.length > 0 && bottom.length > 0) {
     const solved = solveLineOverlap(
       geom.union(top.map((c) => c.ring)),
@@ -129,12 +130,17 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
       params.connect,
     );
     overlapY = solved.dy;
-    if (!solved.welded) warnings.push('the two lines never meet; nudge them closer by hand');
+    naturalWeld = solved.welded;
   }
   bottom = translateContours(bottom, 0, overlapY);
 
   const solved = connect([...top, ...bottom], geom, params.connect, params.manualBridges);
   warnings.push(...solved.warnings);
+  // Only worth mentioning if bridging did not rescue it: the lines not
+  // touching on their own is normal on a light face.
+  if (!naturalWeld && solved.lineLinks < params.connect.minLineLinks) {
+    warnings.push('the lines do not overlap; try a deeper line overlap');
+  }
 
   const polys = simplifyPolys(solved.polys, params.simplifyTol);
   if (!geom.survivesErosion(polys, params.minFeature)) {

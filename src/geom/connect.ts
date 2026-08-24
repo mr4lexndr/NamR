@@ -34,9 +34,8 @@ export interface ConnectOptions {
    */
   filletRadius: number;
   /**
-   * Holes smaller than this are filled. Welding two strokes that pass close
-   * to each other can trap a sliver of background; it is not a counter, it
-   * just reads as a defect. Real counters in a 20mm script run 5mm² and up.
+   * Backstop for holes the provenance test lets through: anything under this
+   * area is filled regardless. Set to 0 to keep every counter the font has.
    */
   minHoleArea: number;
 }
@@ -51,7 +50,7 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   minLineLinks: 2,
   linkSeparation: 14,
   filletRadius: 0.25,
-  minHoleArea: 3,
+  minHoleArea: 0.6,
 };
 
 export type BridgeKind = 'stem' | 'auto' | 'manual';
@@ -224,14 +223,32 @@ export const bridgeIslands = (
   return { bridges, warnings };
 };
 
-/** Drop holes below `minArea`; see ConnectOptions.minHoleArea. */
-export const dropSliverHoles = (polys: Poly[], minArea: number): Poly[] => {
-  if (minArea <= 0) return polys;
-  return polys.map((p) => ({
+/**
+ * Drop holes that welding invented, keep the ones the font drew.
+ *
+ * The two are hard to separate by size — a real counter and a trapped sliver
+ * can be the same area — but they differ in provenance. A counter was already
+ * a hole before anything was welded. A sliver was *exterior*: open background
+ * between two strokes that only became enclosed once they were joined. So a
+ * hole is genuine exactly when it lies inside a hole of the raw outline.
+ */
+export const dropTrappedHoles = (
+  polys: Poly[],
+  rawHoles: Poly[],
+  minArea: number,
+  geom: Geom,
+): Poly[] =>
+  polys.map((p) => ({
     outer: p.outer,
-    holes: p.holes.filter((h) => Math.abs(ringArea(h)) >= minArea),
+    holes: p.holes.filter((h) => {
+      const area = Math.abs(ringArea(h));
+      if (area < minArea) return false;
+      if (rawHoles.length === 0) return false;
+      const hole: Poly[] = [{ outer: h, holes: [] }];
+      const kept = geom.difference(hole, geom.difference(hole, rawHoles));
+      return geom.area(kept) > area * 0.5;
+    }),
   }));
-};
 
 /**
  * Guarantee the two lines are tied together in several places. Natural welds
@@ -378,7 +395,11 @@ export const connect = (
   const warnings: string[] = [];
   const stems = markStems(contours, geom, opts);
 
-  let polys = geom.union(contours.map((c) => c.ring));
+  const raw = geom.union(contours.map((c) => c.ring));
+  // Every counter the font actually drew, before anything is welded.
+  const rawHoles: Poly[] = raw.flatMap((p) => p.holes.map((h) => ({ outer: h, holes: [] })));
+
+  let polys = raw;
   polys = applyBridges(polys, [...stems, ...manual], geom);
   polys = geom.close(polys, opts.weldRadius);
 
@@ -398,7 +419,7 @@ export const connect = (
   // trapped. Order matters: filleting can shrink a sliver but rarely closes
   // it, so the hole pass runs last.
   polys = geom.close(polys, opts.filletRadius);
-  polys = dropSliverHoles(polys, opts.minHoleArea);
+  polys = dropTrappedHoles(polys, rawHoles, opts.minHoleArea, geom);
 
   // Two strokes meeting at a single point come back from the union as one
   // self-touching ring, so the island pass above sees a shape that is already
