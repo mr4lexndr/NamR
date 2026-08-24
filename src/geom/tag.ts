@@ -140,7 +140,9 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   warnings.push(...solved.warnings);
   // Only worth mentioning if bridging did not rescue it: the lines not
   // touching on their own is normal on a light face.
-  if (naturalWelds === 0 && solved.lineLinks < conn.minLineLinks) {
+  // Line warnings are meaningless with only one line to place.
+  if (top.length > 0 && bottom.length > 0
+      && naturalWelds === 0 && solved.lineLinks < conn.minLineLinks) {
     warnings.push('the lines do not overlap; try a deeper line overlap');
   }
 

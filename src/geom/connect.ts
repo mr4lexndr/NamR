@@ -374,29 +374,67 @@ export const dropTrappedHoles = (
  * apart so they brace the tag instead of stacking up in one spot.
  */
 export const linkLines = (
-  top: Poly[],
-  bottom: Poly[],
+  topContours: Contour[],
+  bottomContours: Contour[],
   geom: Geom,
   opts: ConnectOptions,
 ): { bridges: Bridge[]; links: number } => {
   const bridges: Bridge[] = [];
+  if (topContours.length === 0 || bottomContours.length === 0) return { bridges, links: 0 };
+
+  const top = geom.union(topContours.map((c) => c.ring));
+  const bottom = geom.union(bottomContours.map((c) => c.ring));
   if (top.length === 0 || bottom.length === 0) return { bridges, links: 0 };
 
-  // Existing contact patches: where the two lines already share material.
-  const shared = intersect(top, bottom, geom);
-  const sites: Pt[] = shared.map((p) => {
-    const b = bboxOf([p.outer]);
-    return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
-  });
+  /** Which letter of a line a point belongs to. */
+  const owner = (contours: Contour[]) => {
+    const byGlyph = new Map<number, Ring[]>();
+    for (const c of contours) {
+      const list = byGlyph.get(c.glyph);
+      if (list) list.push(c.ring);
+      else byGlyph.set(c.glyph, [c.ring]);
+    }
+    const entries = [...byGlyph.entries()];
+    return (p: Pt): number => {
+      let bestG = -1, bestD = Infinity;
+      for (const [g, rings] of entries) {
+        for (const r of rings) {
+          for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+            const { d2 } = nearestOnSeg(p, r[j]!, r[i]!);
+            if (d2 < bestD) { bestD = d2; bestG = g; }
+          }
+        }
+      }
+      return bestG;
+    };
+  };
+  const topGlyph = owner(topContours);
+  const bottomGlyph = owner(bottomContours);
 
-  // On a short name two links cannot be `linkSeparation` apart, so scale the
-  // requirement to the tag and relax it further rather than give up on the
-  // second link -- a single contact is the failure worth avoiding.
-  const width = bboxOf(ringsOf(top).concat(ringsOf(bottom))).x1
-    - bboxOf(ringsOf(top).concat(ringsOf(bottom))).x0;
-  let sep = Math.min(opts.linkSeparation, width * 0.35);
-  const farEnough = (p: Pt): boolean =>
-    sites.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= sep);
+  /**
+   * A link is only worth counting once per pair of letters.
+   *
+   * Two welds a few millimetres apart on the same descender look like two
+   * connections but brace nothing: the tag still folds along that one letter.
+   * Keying by which letter each end lands on is what makes "two links" mean
+   * two places the lines are actually held together.
+   */
+  const held = new Set<string>();
+  const letters = new Set<number>();
+  const noteSite = (p: Pt): boolean => {
+    const key = `${topGlyph(p)}:${bottomGlyph(p)}`;
+    if (held.has(key)) return false;
+    held.add(key);
+    letters.add(topGlyph(p));
+    return true;
+  };
+
+  for (const patch of intersect(top, bottom, geom)) {
+    const b = bboxOf([patch.outer]);
+    noteSite({ x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 });
+  }
+
+  const enough = (): boolean => held.size >= opts.minLineLinks && letters.size >= 2;
 
   // Candidate contacts, nearest first: every top vertex against the bottom.
   const cands: { a: Pt; b: Pt; d: number }[] = [];
@@ -414,25 +452,21 @@ export const linkLines = (
   }
   cands.sort((x, y) => x.d - y.d);
 
-  for (let pass = 0; pass < 3 && sites.length < opts.minLineLinks; pass++) {
-    if (pass > 0) sep /= 2;
-    for (const c of cands) {
-      if (sites.length >= opts.minLineLinks) break;
-      if (c.d > opts.maxBridgeLength) break;
-      const mid = { x: (c.a.x + c.b.x) / 2, y: (c.a.y + c.b.y) / 2 };
-      if (!farEnough(mid)) continue;
-      const ends = overshoot(c.a, c.b, opts.bridgeWidth * 0.6);
-      bridges.push({
-        id: `link:${c.a.x.toFixed(1)},${c.a.y.toFixed(1)}`,
-        a: ends.a, b: ends.b,
-        width: opts.bridgeWidth,
-        kind: 'auto',
-      });
-      sites.push(mid);
-    }
+  for (const c of cands) {
+    if (enough()) break;
+    if (c.d > opts.maxBridgeLength) break;
+    const mid = { x: (c.a.x + c.b.x) / 2, y: (c.a.y + c.b.y) / 2 };
+    if (!noteSite(mid)) continue;
+    const ends = overshoot(c.a, c.b, opts.bridgeWidth * 0.6);
+    bridges.push({
+      id: `link:${c.a.x.toFixed(1)},${c.a.y.toFixed(1)}`,
+      a: ends.a, b: ends.b,
+      width: opts.bridgeWidth,
+      kind: 'auto',
+    });
   }
 
-  return { bridges, links: sites.length };
+  return { bridges, links: held.size };
 };
 
 export const applyBridges = (polys: Poly[], bridges: Bridge[], geom: Geom): Poly[] => {
@@ -544,7 +578,7 @@ export const solveLinePlacement = (
     dx: number,
     dy: number,
     ceiling = Infinity,
-  ): { score: number; welds: number } => {
+  ): { score: number; welds: number; drowned: number } => {
     const moved = translate(P.B, dx, dy);
     const welds = countWelds(P.T, moved, geom, opts.minWeldWidth);
     const merged = geom.union([...ringsOf(P.T), ...ringsOf(moved)]);
@@ -559,21 +593,25 @@ export const solveLinePlacement = (
     // sound weld on a long one already means its capital has been driven
     // straight through the other line.
     const drowned = shared / areaMin;
-    const cheap = -useful * 4 + drowned * 60 + Math.abs(dx) * 0.06;
+    // Gentle up to a tenth of the smaller line's ink, then steeply punishing.
+    // A cliff instead would commit to the tightest feasible overlap even when
+    // easing off a little would have avoided a long strut entirely.
+    const crowding = drowned * 60 + Math.max(0, drowned - 0.1) ** 2 * 2000;
+    const cheap = -useful * 4 + crowding + Math.abs(dx) * 0.06;
     // The island tree is by far the costliest term and can only add to the
     // score, so a placement already worse than the best without it can be
     // dropped unmeasured. That prunes most of the grid.
-    if (cheap >= ceiling) return { score: cheap, welds };
-    return { score: cheap + strutLength(P, dx, dy) * 1.5, welds };
+    if (cheap >= ceiling) return { score: cheap, welds, drowned };
+    return { score: cheap + strutLength(P, dx, dy) * 1.5, welds, drowned };
   };
 
   let best: Placement2D | null = null;
   const consider = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): void => {
-    const { score, welds } = cost(P, dx, dy, best?.score ?? Infinity);
-    if (!best || score < best.score) best = { dx, dy, welds, score };
+    const r = cost(P, dx, dy, best?.score ?? Infinity);
+    if (!best || r.score < best.score) best = { dx, dy, welds: r.welds, score: r.score };
   };
 
-  // Coarse sweep of both axes on heavily decimated outlines...
+  // Coarse sweep of both axes on heavily decimated outlines.
   const reach = span * 0.4;
   const DX = 11, DY = 7;
   for (let i = 0; i <= DX; i++) {
@@ -675,13 +713,17 @@ export const connect = (
   polys = applyBridges(polys, [...stems, ...manual], geom);
   polys = geom.close(polys, opts.weldRadius);
 
-  const top = geom.union(contours.filter((c) => c.line === 0).map((c) => c.ring));
-  const bottom = geom.union(contours.filter((c) => c.line !== 0).map((c) => c.ring));
-  const found = linkLines(top, bottom, geom, opts);
+  const found = linkLines(
+    contours.filter((c) => c.line === 0),
+    contours.filter((c) => c.line !== 0),
+    geom,
+    opts,
+  );
   const links = found.bridges.filter(keep);
   const lineLinks = found.links - (found.bridges.length - links.length);
   polys = applyBridges(polys, links, geom);
-  if (lineLinks < opts.minLineLinks) {
+  const twoLines = contours.some((c) => c.line === 0) && contours.some((c) => c.line !== 0);
+  if (twoLines && lineLinks < opts.minLineLinks) {
     warnings.push(`the two lines meet in only ${lineLinks} place${lineLinks === 1 ? '' : 's'}`);
   }
 
