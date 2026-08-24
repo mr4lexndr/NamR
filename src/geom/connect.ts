@@ -1,5 +1,5 @@
 import type { Contour, Poly, Pt, Ring } from './types';
-import { bboxOf } from './types';
+import { bboxOf, ringArea } from './types';
 import type { Geom } from './clipper';
 
 export interface ConnectOptions {
@@ -13,6 +13,18 @@ export interface ConnectOptions {
   maxBridgeLength: number;
   /** A weld must be at least this wide to survive printing and handling. */
   minWeldWidth: number;
+  /**
+   * Rounds the concave corners where a bridge meets a stroke, so a connector
+   * flows into the letter instead of butting against it. Applied after
+   * bridging, which is what separates it from `weldRadius`.
+   */
+  filletRadius: number;
+  /**
+   * Holes smaller than this are filled. Welding two strokes that pass close
+   * to each other can trap a sliver of background; it is not a counter, it
+   * just reads as a defect. Real counters in a 20mm script run 5mm² and up.
+   */
+  minHoleArea: number;
 }
 
 export const DEFAULT_CONNECT: ConnectOptions = {
@@ -21,6 +33,8 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   stemWidth: 0.9,
   maxBridgeLength: 12,
   minWeldWidth: 0.9,
+  filletRadius: 0.25,
+  minHoleArea: 3,
 };
 
 export type BridgeKind = 'stem' | 'auto' | 'manual';
@@ -191,6 +205,15 @@ export const bridgeIslands = (
   return { bridges, warnings };
 };
 
+/** Drop holes below `minArea`; see ConnectOptions.minHoleArea. */
+export const dropSliverHoles = (polys: Poly[], minArea: number): Poly[] => {
+  if (minArea <= 0) return polys;
+  return polys.map((p) => ({
+    outer: p.outer,
+    holes: p.holes.filter((h) => Math.abs(ringArea(h)) >= minArea),
+  }));
+};
+
 export const applyBridges = (polys: Poly[], bridges: Bridge[], geom: Geom): Poly[] => {
   if (bridges.length === 0) return polys;
   const rings = ringsOf(polys);
@@ -271,6 +294,12 @@ export const connect = (
   const { bridges: auto, warnings: w } = bridgeIslands(polys, opts);
   warnings.push(...w);
   polys = applyBridges(polys, auto, geom);
+
+  // Fillet the bridge junctions, then clear any background the welding
+  // trapped. Order matters: filleting can shrink a sliver but rarely closes
+  // it, so the hole pass runs last.
+  polys = geom.close(polys, opts.filletRadius);
+  polys = dropSliverHoles(polys, opts.minHoleArea);
 
   const components = polys.length;
   if (components > 1) warnings.push(`${components} separate pieces remain`);

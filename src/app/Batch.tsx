@@ -14,16 +14,18 @@ interface Props {
 }
 
 const PRESETS: { label: string; w: number; d: number }[] = [
-  { label: 'Bambu A1 / P1 · 256', w: 256, d: 256 },
-  { label: 'Prusa MK4 · 250×210', w: 250, d: 210 },
-  { label: 'Ender 3 · 220', w: 220, d: 220 },
-  { label: 'Mini / A1 mini · 180', w: 180, d: 180 },
+  { label: 'Bambu A1 / P1 · 256 × 256', w: 256, d: 256 },
+  { label: 'Prusa MK4 · 250 × 210', w: 250, d: 210 },
+  { label: 'Ender 3 · 220 × 220', w: 220, d: 220 },
+  { label: 'A1 mini · 180 × 180', w: 180, d: 180 },
 ];
+const CUSTOM = 'custom';
 
 export const Batch = ({ params, send, ready }: Props): React.ReactElement => {
   const [rows, setRows] = useState<NameRow[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
   const [bed, setBed] = useState<Bed>(DEFAULT_BED);
+  const [custom, setCustom] = useState(false);
   const [format, setFormat] = useState<Format>('3mf');
   const [grouping, setGrouping] = useState<Grouping>('plate');
   const [running, setRunning] = useState(false);
@@ -74,24 +76,58 @@ export const Batch = ({ params, send, ready }: Props): React.ReactElement => {
 
   return (
     <div className="batch">
-      <label className="fld"><span>Guest list — CSV</span>
+      <label className="fld"><span>Guest list</span>
         <input type="file" accept=".csv,.txt,text/csv,text/plain"
           onChange={async (e) => { const f = e.target.files?.[0]; if (f) load(await f.text()); }} />
       </label>
+
+      <p className="help">
+        <b>One guest per line.</b> First name, then surname. Separate the two with a
+        comma, semicolon, tab — or just a space.
+      </p>
+      <pre className="sample">Anna, Kowalska
+Piotr Zaręba
+Maria Anna;Zielińska</pre>
+      <p className="help dimmer">
+        A CSV exported from Excel works as-is, header row and all. With a space,
+        the last word becomes the surname, so “Maria Anna Zielińska” splits as
+        you would expect.
+      </p>
+
       <textarea ref={paste} className="paste" rows={4}
-        placeholder={'…or paste names here\nAnna;Kowalska\nPiotr Zaręba'}
+        placeholder={'…or paste your list here'}
         onChange={(e) => load(e.target.value)} />
-      {notes.length > 0 && <p className="note">{notes.join(' · ')}</p>}
+      {notes.length > 0 && <p className="note">Read: {notes.join(' · ')}</p>}
+      {rows.length > 0 && (
+        <p className="note">
+          First: <b>{rows[0]!.first}</b> / <b>{rows[0]!.last || '(none)'}</b>
+          {rows.length > 1 && <> · Last: <b>{rows.at(-1)!.first}</b> / <b>{rows.at(-1)!.last || '(none)'}</b></>}
+        </p>
+      )}
 
       <label className="fld"><span>Printer bed</span>
-        <select value={`${bed.width}x${bed.depth}`}
+        <select value={custom ? CUSTOM : `${bed.width}x${bed.depth}`}
           onChange={(e) => {
+            if (e.target.value === CUSTOM) { setCustom(true); return; }
             const p = PRESETS.find((q) => `${q.w}x${q.d}` === e.target.value);
-            if (p) setBed({ ...bed, width: p.w, depth: p.d });
+            if (p) { setCustom(false); setBed({ ...bed, width: p.w, depth: p.d }); }
           }}>
           {PRESETS.map((p) => <option key={p.label} value={`${p.w}x${p.d}`}>{p.label}</option>)}
+          <option value={CUSTOM}>Custom…</option>
         </select>
       </label>
+      {custom && (
+        <div className="two">
+          <label className="fld"><span>Width <b>mm</b></span>
+            <input type="number" min={20} max={2000} value={bed.width}
+              onChange={(e) => setBed({ ...bed, width: Math.max(20, Number(e.target.value) || 0) })} />
+          </label>
+          <label className="fld"><span>Depth <b>mm</b></span>
+            <input type="number" min={20} max={2000} value={bed.depth}
+              onChange={(e) => setBed({ ...bed, depth: Math.max(20, Number(e.target.value) || 0) })} />
+          </label>
+        </div>
+      )}
 
       <div className="two">
         <label className="fld"><span>Spacing <b>{bed.spacing}mm</b></span>

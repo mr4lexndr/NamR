@@ -23,8 +23,9 @@ whole thing hosts as a static site on GitHub Pages.
 | Bed packing / batches | done |
 | Bridge editor | not started |
 
-Validated on 12 Polish names: all resolve to a single watertight, correctly
-oriented component at ~67ms each.
+Validated on 12 Polish names across Brush Script, Pacifico and Yellowtail:
+every one resolves to a single watertight, correctly oriented component with
+its text face on z = 0, at 60–83ms each.
 
 ```
 ok   Ryszard Jasiński           comp=1 br=3 56x32x30mm 41Ktri 1.95MB
@@ -90,10 +91,20 @@ src/geom/
 6. **Bridging.** Islands that survive are joined by a minimum spanning tree
    over inter-island distance: n islands need exactly n−1 bridges, each placed
    where the letters already almost touch.
-7. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
+7. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
+   then holes under `minHoleArea` are dropped — welding two strokes that pass
+   close together traps slivers of background that read as defects, while real
+   counters in a 20mm script run 5mm² and up.
+8. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
    error, and clears the slivers that make ear-clipping drop a triangle.
-8. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
+9. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
    Checked watertight before export.
+
+### Print orientation
+
+The `alpha = 0` face lies exactly on `z = 0`, so a tag lands text-face-down on
+the bed. The first layer is the whole name outline — maximum adhesion, no
+supports, and the visible face is the one against the glass.
 
 ### Batches
 

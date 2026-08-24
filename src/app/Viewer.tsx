@@ -9,6 +9,9 @@ interface Props {
 
 /** Below this the sweep bands shade as one smooth surface; above it stays a hard edge. */
 const CREASE_DEG = 30;
+const FOV_DEG = 38;
+/** Breathing room around the model when framing it. */
+const FIT_MARGIN = 1.12;
 
 export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
   const host = useRef<HTMLDivElement>(null);
@@ -20,7 +23,9 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
     az: -0.62, el: 0.42, dist: 160,
     target: new THREE.Vector3(),
     home: 160,
+    radius: 60,
   });
+  const fitRef = useRef<() => void>(() => {});
   const drag = useRef<{ mode: 'orbit' | 'pan' | null; x: number; y: number }>({ mode: null, x: 0, y: 0 });
 
   useEffect(() => {
@@ -52,11 +57,28 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
       camera.lookAt(c.target);
     };
 
+    /**
+     * Frame the bounding sphere. A wide, shallow tag is limited by the
+     * horizontal field of view long before the vertical one, so fitting on
+     * vertical FOV alone crops the ends off every long name.
+     */
+    const fit = (): void => {
+      const c = cam.current;
+      const vFov = (FOV_DEG * Math.PI) / 180;
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+      const need = c.radius / Math.sin(Math.min(vFov, hFov) / 2);
+      c.home = need * FIT_MARGIN;
+      c.dist = c.home;
+      c.target.set(0, 0, 0);
+    };
+    fitRef.current = fit;
+
     const resize = (): void => {
       const w = el.clientWidth, h = el.clientHeight;
       renderer.setSize(w, h, false);
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
+      fit();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(el);
@@ -110,10 +132,9 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
     };
     const menu = (e: Event): void => e.preventDefault();
     const dbl = (): void => {
-      cam.current.target.set(0, 0, 0);
-      cam.current.dist = cam.current.home;
       cam.current.az = -0.62;
       cam.current.el = 0.42;
+      fitRef.current();
     };
 
     const cv = renderer.domElement;
@@ -153,7 +174,13 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
     let g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     g.setIndex(new THREE.BufferAttribute(indices, 1));
-    g.center();
+
+    // Centre on the bounding *sphere*, not the box: the box centre of a fan
+    // shape sits off to one side of the mass, which puts the orbit pivot
+    // somewhere the model is not.
+    g.computeBoundingSphere();
+    const c = g.boundingSphere?.center;
+    if (c) g.translate(-c.x, -c.y, -c.z);
 
     // The caps share vertices with the walls, so plain computeVertexNormals
     // averages a flat cap against a perpendicular wall and the flat faces
@@ -169,10 +196,8 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
     sc.add(m);
     mesh.current = m;
 
-    const r = g.boundingSphere?.radius ?? 60;
-    cam.current.home = r * 2.7;
-    cam.current.dist = r * 2.7;
-    cam.current.target.set(0, 0, 0);
+    cam.current.radius = g.boundingSphere?.radius ?? 60;
+    fitRef.current();
   }, [positions, indices]);
 
   return (

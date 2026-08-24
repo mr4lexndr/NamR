@@ -22,6 +22,8 @@ interface Settings {
   axisOffset: number;
   weldRadius: number;
   bridgeWidth: number;
+  filletRadius: number;
+  minHoleArea: number;
   overlapY: number | null;
   nudgeX: number;
 }
@@ -36,6 +38,8 @@ const INITIAL: Settings = {
   axisOffset: 5,
   weldRadius: DEFAULT_TAG.connect.weldRadius,
   bridgeWidth: DEFAULT_TAG.connect.bridgeWidth,
+  filletRadius: DEFAULT_TAG.connect.filletRadius,
+  minHoleArea: DEFAULT_TAG.connect.minHoleArea,
   overlapY: null,
   nudgeX: 0,
 };
@@ -48,7 +52,13 @@ const toParams = (s: Settings): TagParams => ({
   frontHeight: s.sizeMode === 'front' ? s.frontHeight : undefined,
   nudgeX: s.nudgeX,
   overlapY: s.overlapY ?? undefined,
-  connect: { ...DEFAULT_TAG.connect, weldRadius: s.weldRadius, bridgeWidth: s.bridgeWidth },
+  connect: {
+    ...DEFAULT_TAG.connect,
+    weldRadius: s.weldRadius,
+    bridgeWidth: s.bridgeWidth,
+    filletRadius: s.filletRadius,
+    minHoleArea: s.minHoleArea,
+  },
   sweep: { ...DEFAULT_TAG.sweep, angleDeg: s.angleDeg, axisOffset: s.axisOffset },
 });
 
@@ -214,6 +224,12 @@ export const App = (): React.ReactElement => {
             hint={`Closes gaps up to ${(s.weldRadius * 2).toFixed(2)}mm`} />
           <Slider label="Bridge width" unit="mm" min={0.4} max={3} step={0.05}
             value={s.bridgeWidth} onChange={(v) => num('bridgeWidth', v)} />
+          <Slider label="Connector blend" unit="mm" min={0} max={1} step={0.05}
+            value={s.filletRadius} onChange={(v) => num('filletRadius', v)}
+            hint="Rounds where a connector meets a stroke" />
+          <Slider label="Fill holes under" unit="mm²" min={0} max={12} step={0.5}
+            value={s.minHoleArea} onChange={(v) => num('minHoleArea', v)}
+            hint="Clears slivers trapped between welded strokes" />
           <Slider label="Line overlap" unit="mm" min={-40} max={5} step={0.25}
             value={s.overlapY ?? info?.overlapY ?? 0}
             onChange={(v) => num('overlapY', v)}
