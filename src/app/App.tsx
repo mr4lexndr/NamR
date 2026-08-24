@@ -9,9 +9,13 @@ const BUNDLED = [
   { label: 'Pacifico', file: 'Pacifico-Regular.ttf' },
 ];
 
+type SizeMode = 'em' | 'front';
+
 interface Settings {
   first: string;
   last: string;
+  sizeMode: SizeMode;
+  sizeMm: number;
   frontHeight: number;
   angleDeg: number;
   axisOffset: number;
@@ -24,6 +28,8 @@ interface Settings {
 const INITIAL: Settings = {
   first: 'Ryszard',
   last: 'Jasiński',
+  sizeMode: 'em',
+  sizeMm: 20,
   frontHeight: 20,
   angleDeg: 60,
   axisOffset: 5,
@@ -37,7 +43,8 @@ const toParams = (s: Settings): TagParams => ({
   ...DEFAULT_TAG,
   first: s.first,
   last: s.last,
-  frontHeight: s.frontHeight,
+  sizeMm: s.sizeMm,
+  frontHeight: s.sizeMode === 'front' ? s.frontHeight : undefined,
   nudgeX: s.nudgeX,
   overlapY: s.overlapY ?? undefined,
   connect: { ...DEFAULT_TAG.connect, weldRadius: s.weldRadius, bridgeWidth: s.bridgeWidth },
@@ -161,9 +168,21 @@ export const App = (): React.ReactElement => {
           <input value={s.last} onChange={(e) => setS({ ...s, last: e.target.value })} />
         </label>
 
-        <Slider label="Front height" unit="mm" min={8} max={45} step={0.5}
-          value={s.frontHeight} onChange={(v) => num('frontHeight', v)}
-          hint="Ink height of the surname line" />
+        <div className="seg">
+          <button className={s.sizeMode === 'em' ? 'on' : ''}
+            onClick={() => setS({ ...s, sizeMode: 'em' })}>Font size</button>
+          <button className={s.sizeMode === 'front' ? 'on' : ''}
+            onClick={() => setS({ ...s, sizeMode: 'front' })}>Front height</button>
+        </div>
+        {s.sizeMode === 'em' ? (
+          <Slider label="Font size" unit="mm" min={6} max={60} step={0.5}
+            value={s.sizeMm} onChange={(v) => num('sizeMm', v)}
+            hint="The number you type into Fusion's text Height field" />
+        ) : (
+          <Slider label="Front height" unit="mm" min={8} max={60} step={0.5}
+            value={s.frontHeight} onChange={(v) => num('frontHeight', v)}
+            hint="Ink height of the surname line, lowest to highest" />
+        )}
         <Slider label="Sweep angle" unit="°" min={0} max={90} step={1}
           value={s.angleDeg} onChange={(v) => num('angleDeg', v)} />
         <Slider label="Axis offset" unit="mm" min={1} max={40} step={0.5}
@@ -211,7 +230,7 @@ export const App = (): React.ReactElement => {
               </span>
               <span>{info.dx.toFixed(0)} × {info.dy.toFixed(0)} × {info.dz.toFixed(0)} mm</span>
               <span>{(info.triangles / 1000).toFixed(0)}K tris</span>
-              <span>em {info.emMm.toFixed(1)} mm</span>
+              <span>em {info.emMm.toFixed(1)} · front line {info.frontLineMm.toFixed(1)} · profile {info.profileMm.toFixed(1)} mm</span>
               <span>{info.ms.toFixed(0)} ms</span>
               {busy && <span className="dim">building…</span>}
             </>

@@ -42,6 +42,8 @@ export interface BuildResponse {
     warnings: string[];
     substituted: string[];
     emMm: number;
+    frontLineMm: number;
+    profileMm: number;
     overlapY: number;
     triangles: number;
     dx: number;
@@ -87,6 +89,8 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
         warnings: r.warnings,
         substituted: r.substituted,
         emMm: r.emMm,
+        frontLineMm: r.frontLineMm,
+        profileMm: r.profileMm,
         overlapY: r.overlapY,
         triangles: r.mesh.indices.length / 3,
         dx: r.bounds.dx,

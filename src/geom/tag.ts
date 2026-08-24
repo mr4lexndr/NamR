@@ -15,13 +15,15 @@ export interface TagParams {
   first: string;
   last: string;
   /**
-   * Ink height of the front (surname) line in mm, measured from the lowest
-   * point. This is the "front height" the reference model is dimensioned by:
-   * in ref/AsiaJ.step the lowest ink sits at radius 5.000 and that line runs
-   * to radius ~25. Takes precedence over `sizeMm` when set.
+   * Ink height of the front (surname) line in mm, measured lowest to highest.
+   * Set this to dimension by the finished line instead of the type size;
+   * takes precedence over `sizeMm`. Leave unset to size by em.
    */
   frontHeight?: number;
-  /** Em size in mm. Used directly only when `frontHeight` is unset. */
+  /**
+   * Em size in mm — the number you type into Fusion's text Height field.
+   * Used directly unless `frontHeight` is set.
+   */
   sizeMm: number;
   align: Align;
   /** Horizontal nudge of the surname relative to the first name. */
@@ -39,7 +41,6 @@ export interface TagParams {
 }
 
 export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
-  frontHeight: 20,
   sizeMm: 20,
   align: 'center',
   nudgeX: 0,
@@ -54,6 +55,10 @@ export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
 export interface TagResult {
   /** The em size actually used, after solving for `frontHeight`. */
   emMm: number;
+  /** Ink height of the front line, for comparing against a CAD dimension. */
+  frontLineMm: number;
+  /** Ink height of both lines combined, i.e. the swept profile. */
+  profileMm: number;
   polys: Poly[];
   mesh: Mesh;
   bridges: Bridge[];
@@ -136,8 +141,13 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
 
   const mesh = sweepTag(polys, params.sweep);
 
+  const pb = bboxOf(polys.flatMap((p) => [p.outer, ...p.holes]));
+  const fb = bottom.length ? bboxOf(bottom.map((c) => c.ring)) : pb;
+
   return {
     emMm: em,
+    frontLineMm: fb.y1 - fb.y0,
+    profileMm: pb.y1 - pb.y0,
     polys,
     mesh,
     bridges: solved.bridges,
