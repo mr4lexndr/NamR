@@ -28,14 +28,24 @@ export interface ConnectOptions {
   /** Link sites must be at least this far apart, so they brace rather than double up. */
   linkSeparation: number;
   /**
+   * How far a letter may be pulled towards its neighbour to close a gap, in
+   * mm. Tightening the spacing is what a signwriter would do; a strut across
+   * open space is the fallback when the gap is too wide to close by hand.
+   */
+  letterTighten: number;
+  /** How far past first contact to pull, so the join has width. */
+  tightenOverlap: number;
+  /**
    * Rounds the concave corners where a bridge meets a stroke, so a connector
    * flows into the letter instead of butting against it. Applied after
    * bridging, which is what separates it from `weldRadius`.
    */
   filletRadius: number;
   /**
-   * Backstop for holes the provenance test lets through: anything under this
-   * area is filled regardless. Set to 0 to keep every counter the font has.
+   * A hole that no single glyph owns is filled only if it is smaller than
+   * this, in mm² at a 20mm em. Above it the gap is a deliberate space between
+   * letters — the eye of the script — and filling it turns the word solid.
+   * Set to 0 to keep every hole.
    */
   minHoleArea: number;
 }
@@ -49,8 +59,10 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   maxOverlapFraction: 0.45,
   minLineLinks: 2,
   linkSeparation: 14,
+  letterTighten: 1.2,
+  tightenOverlap: 0.35,
   filletRadius: 0.25,
-  minHoleArea: 0.6,
+  minHoleArea: 4.5,
 };
 
 export type BridgeKind = 'stem' | 'auto' | 'manual';
@@ -224,17 +236,120 @@ export const bridgeIslands = (
 };
 
 /**
- * Drop holes that welding invented, keep the ones the font drew.
+ * Pull letters towards their neighbours until they touch.
  *
- * The two are hard to separate by size — a real counter and a trapped sliver
- * can be the same area — but they differ in provenance. A counter was already
- * a hole before anything was welded. A sliver was *exterior*: open background
- * between two strokes that only became enclosed once they were joined. So a
- * hole is genuine exactly when it lies inside a hole of the raw outline.
+ * A script is meant to join up, so a gap between two letters is better closed
+ * by tightening the spacing than by bridging across it: the result reads as
+ * handwriting rather than as two letters wired together. Each letter may only
+ * travel `letterTighten`, and anything still apart after that is left to the
+ * bridging pass.
+ *
+ * Shifts accumulate rightwards, so closing an early gap carries the rest of
+ * the word with it and the spacing stays even.
+ */
+export const tightenLine = (
+  contours: Contour[],
+  geom: Geom,
+  opts: ConnectOptions,
+): Contour[] => {
+  if (opts.letterTighten <= 0 || contours.length === 0) return contours;
+
+  const order = [...new Set(contours.map((c) => c.glyph))].sort((a, b) => a - b);
+  const shift = new Map<number, number>();
+  let carry = 0;
+  let placed: Poly[] = [];
+
+  for (const g of order) {
+    const rings = contours.filter((c) => c.glyph === g).map((c) => c.ring);
+    if (rings.length === 0) continue;
+
+    const at = (d: number): Ring[] => rings.map((r) => r.map((p) => ({ x: p.x + d, y: p.y })));
+    const islandsWith = (d: number): number =>
+      geom.union([...placed.flatMap((p) => [p.outer, ...p.holes]), ...at(d)]).length;
+
+    let dx = carry;
+    if (placed.length > 0) {
+      const before = islandsWith(carry);
+      let budget = opts.letterTighten;
+      // A few short steps rather than one guess: the gap is rarely horizontal,
+      // so moving by its width does not close it in one go.
+      for (let i = 0; i < 5 && budget > 0.01; i++) {
+        const { dist } = closestPair(placed, geom.union(at(dx)));
+        if (dist < 0.01) break;
+        const step = Math.min(dist + opts.tightenOverlap, budget);
+        dx -= step;
+        budget -= step;
+      }
+      // Tightening can push a letter into a neighbour's counter, which strands
+      // it as an island inside a hole and leaves the word worse off than the
+      // gap did. Only keep a shift that actually joined something.
+      if (dx !== carry && islandsWith(dx) > before) dx = carry;
+    }
+    shift.set(g, dx);
+    carry = dx;
+    placed = geom.union([
+      ...placed.flatMap((p) => [p.outer, ...p.holes]),
+      ...rings.map((r) => r.map((p) => ({ x: p.x + dx, y: p.y }))),
+    ]);
+  }
+
+  const tightened = contours.map((c) => {
+    const dx = shift.get(c.glyph) ?? 0;
+    return dx === 0 ? c : { ...c, ring: c.ring.map((p) => ({ x: p.x + dx, y: p.y })) };
+  });
+
+  // Each step was judged against the state it inherited, so a run of locally
+  // sensible shifts can still land somewhere worse than not moving at all.
+  // Compare the finished word and keep the better one.
+  const was = geom.union(contours.map((c) => c.ring)).length;
+  const now = geom.union(tightened.map((c) => c.ring)).length;
+  return now <= was ? tightened : contours;
+};
+
+/**
+ * Every enclosed region a glyph can legitimately own, taken one glyph at a
+ * time and closed the same way the tag is.
+ *
+ * Testing against the raw outline alone is not enough: plenty of script
+ * capitals draw an open bowl, so the counter only becomes enclosed once
+ * welding seals the gap. Yellowtail's R is one, and judging by the raw
+ * outline filled it into a solid blob. Closing each glyph in isolation gets
+ * that counter back while still refusing anything that needs two glyphs to
+ * enclose it, which is exactly what a trapped sliver is.
+ */
+export const glyphCounters = (
+  contours: Contour[],
+  geom: Geom,
+  opts: ConnectOptions,
+): Poly[] => {
+  const byGlyph = new Map<string, Ring[]>();
+  for (const c of contours) {
+    const key = `${c.line}:${c.glyph}`;
+    const list = byGlyph.get(key);
+    if (list) list.push(c.ring);
+    else byGlyph.set(key, [c.ring]);
+  }
+  const out: Poly[] = [];
+  for (const rings of byGlyph.values()) {
+    for (const p of geom.close(geom.union(rings), opts.weldRadius)) {
+      for (const h of p.holes) out.push({ outer: h, holes: [] });
+    }
+  }
+  return out;
+};
+
+/**
+ * Drop the slivers welding traps, keep everything that reads as a space.
+ *
+ * Two tests, and a hole needs to fail both to be filled. Provenance: a
+ * counter is enclosed by one glyph on its own, so an open bowl that welding
+ * seals still counts. Size: the gap between two adjacent letters is not owned
+ * by either of them, but it is the eye of the script and filling it turns the
+ * word into a blob. Only a hole that is both foreign and tiny is an artifact.
  */
 export const dropTrappedHoles = (
   polys: Poly[],
-  rawHoles: Poly[],
+  counters: Poly[],
   minArea: number,
   geom: Geom,
 ): Poly[] =>
@@ -242,10 +357,10 @@ export const dropTrappedHoles = (
     outer: p.outer,
     holes: p.holes.filter((h) => {
       const area = Math.abs(ringArea(h));
-      if (area < minArea) return false;
-      if (rawHoles.length === 0) return false;
+      if (area >= minArea) return true;
+      if (counters.length === 0) return false;
       const hole: Poly[] = [{ outer: h, holes: [] }];
-      const kept = geom.difference(hole, geom.difference(hole, rawHoles));
+      const kept = geom.difference(hole, geom.difference(hole, counters));
       return geom.area(kept) > area * 0.5;
     }),
   }));
@@ -395,11 +510,9 @@ export const connect = (
   const warnings: string[] = [];
   const stems = markStems(contours, geom, opts);
 
-  const raw = geom.union(contours.map((c) => c.ring));
-  // Every counter the font actually drew, before anything is welded.
-  const rawHoles: Poly[] = raw.flatMap((p) => p.holes.map((h) => ({ outer: h, holes: [] })));
+  const counters = glyphCounters(contours, geom, opts);
 
-  let polys = raw;
+  let polys = geom.union(contours.map((c) => c.ring));
   polys = applyBridges(polys, [...stems, ...manual], geom);
   polys = geom.close(polys, opts.weldRadius);
 
@@ -419,7 +532,7 @@ export const connect = (
   // trapped. Order matters: filleting can shrink a sliver but rarely closes
   // it, so the hole pass runs last.
   polys = geom.close(polys, opts.filletRadius);
-  polys = dropTrappedHoles(polys, rawHoles, opts.minHoleArea, geom);
+  polys = dropTrappedHoles(polys, counters, opts.minHoleArea, geom);
 
   // Two strokes meeting at a single point come back from the union as one
   // self-touching ring, so the island pass above sees a shape that is already

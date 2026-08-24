@@ -24,8 +24,8 @@ whole thing hosts as a static site on GitHub Pages.
 | Bridge editor | not started |
 
 Validated on 12 Polish names across all nine faces (108 combinations): every
-one resolves to a single watertight, correctly oriented component with its
-text face on z = 0 and at least two links between the lines.
+one resolves to a single watertight, correctly oriented component with at
+least two links between the lines, needing 0.6 struts per tag on average.
 
 ```
 ok   Ryszard Jasiński           comp=1 br=3 56x32x30mm 41Ktri 1.95MB
@@ -86,20 +86,27 @@ src/geom/
 4. **Stems.** Each mark is tied to *its own* letter. Proximity alone would
    graft an `i` tittle onto whichever letter happens to be nearest, which on a
    tight script is often the wrong one.
-5. **Closing.** Morphological closing (dilate then erode by `weldRadius`)
+5. **Tightening.** A script is meant to join up, so a gap between letters is
+   closed by pulling them together rather than bridging across it — the result
+   reads as handwriting instead of two letters wired together. Each letter may
+   travel `letterTighten`; anything still apart is left to bridging. Struts
+   dropped from ~2-4 per tag to 0.6 on average when this went in.
+6. **Closing.** Morphological closing (dilate then erode by `weldRadius`)
    welds gaps up to `2 × weldRadius` without fattening the letterforms.
 6. **Bridging.** Islands that survive are joined by a minimum spanning tree
    over inter-island distance: n islands need exactly n−1 bridges, each placed
    where the letters already almost touch.
-8. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
-   then holes that welding invented are dropped. Size cannot tell a trapped
-   sliver from a real counter — they overlap in area — but provenance can: a
-   counter was already a hole before anything was welded, a sliver was open
-   background that only became enclosed once two strokes were joined. So a
-   hole survives exactly when it lies inside a hole of the raw outline.
-9. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
+9. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
+   then trapped slivers are filled. A hole has to fail two tests before it
+   goes. *Provenance:* a counter is enclosed by one glyph on its own, so an
+   open bowl that welding seals still counts — Yellowtail's R is one, and
+   judging by the raw outline alone filled it into a blob. *Size:* the gap
+   between two adjacent letters belongs to neither of them, but it is the eye
+   of the script, and filling it turns the word solid. Only a hole that is
+   both foreign and tiny is an artifact.
+10. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
    error, and clears the slivers that make ear-clipping drop a triangle.
-10. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
+11. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
    Checked watertight before export.
 
 ### Print orientation
@@ -154,9 +161,12 @@ Lobster, Damion, Norican, Sacramento, Alex Brush and Great Vibes. All have
 complete Polish coverage and all solve to a single piece across the test
 names. They are fetched on demand, so only the chosen one is downloaded.
 
-Anything else can be loaded from disk; it is parsed in the browser and never
-uploaded, which is also how to use a licensed face you already own.
-Brush Script is used for local validation via `FONT=`.
+Anything else can be loaded from disk. It is parsed in the browser, kept in
+IndexedDB so it survives a reload, and never transmitted — which is also how
+to use a licensed face you already own. Using Brush Script yourself is fine;
+serving it from the site would be redistributing Monotype's font to every
+visitor, which is a different thing and no licence covers it. Brush Script is
+used for local validation via `FONT=`.
 
 ## Development
 

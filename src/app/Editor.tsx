@@ -43,13 +43,19 @@ export const Editor = ({
     return { x0: x0 - PAD, y0: y0 - PAD, w: x1 - x0 + PAD * 2, h: y1 - y0 + PAD * 2 };
   }, [outline]);
 
-  /** Screen point to model millimetres. Y is flipped: the model is y-up. */
+  /**
+   * Screen point to model millimetres, via the SVG's own screen matrix.
+   * Interpolating across the element instead gets it wrong: the default
+   * preserveAspectRatio letterboxes the viewBox, so the drawing does not fill
+   * the element and a click lands somewhere other than the cursor.
+   */
   const toModel = (e: React.PointerEvent): Pt => {
-    const el = svg.current!;
-    const r = el.getBoundingClientRect();
-    const fx = (e.clientX - r.left) / r.width;
-    const fy = (e.clientY - r.top) / r.height;
-    return { x: view.x0 + fx * view.w, y: -(view.y0 + fy * view.h) - 0 };
+    const el = svg.current;
+    if (!el) return { x: 0, y: 0 };
+    const ctm = el.getScreenCTM();
+    if (!ctm) return { x: 0, y: 0 };
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+    return { x: p.x, y: -p.y };
   };
 
   const path = (ring: number[]): string => {
@@ -78,12 +84,16 @@ export const Editor = ({
   const move = (e: React.PointerEvent): void => {
     setHover(toModel(e));
     const d = dragFrom.current;
-    if (!d || !svg.current) return;
-    const r = svg.current.getBoundingClientRect();
-    const perPx = view.w / r.width;
+    const el = svg.current;
+    if (!d || !el) return;
+    const ctm = el.getScreenCTM();
+    if (!ctm) return;
+    // Convert the drag in screen pixels to millimetres through the same
+    // matrix, so it tracks the cursor at any zoom or aspect.
+    const scale = Math.hypot(ctm.a, ctm.b) || 1;
     onOffsetChange({
-      x: d.ox + (e.clientX - d.x) * perPx,
-      y: d.oy - (e.clientY - d.y) * perPx,
+      x: d.ox + (e.clientX - d.x) / scale,
+      y: d.oy - (e.clientY - d.y) / scale,
     });
   };
 
