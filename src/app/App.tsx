@@ -219,21 +219,13 @@ export const App = (): React.ReactElement => {
       <aside className="panel">
         <h1>NamR</h1>
         <p className="sub">
-          Script name tags for wedding tables, parties and desks — printable
-          straight off the bed.
+          Script name tags for weddings, parties and desks.
         </p>
         <ul className="pitch">
-          <li><b>One connected piece.</b> Letters are joined into a single solid,
-            so a tag prints without supports, glue or assembly and cannot fall apart.</li>
-          <li><b>A whole guest list at once.</b> Paste names or drop in a CSV and
-            every tag is packed onto printer beds, ready to slice.</li>
-          <li><b>Reads face-down on the glass</b>, so the side you look at comes
-            off the printer smooth.</li>
-          <li><b>Polish and Latin Extended</b> throughout — ą ć ę ł ń ó ś ź ż all
-            keep their accents, joined to the letter they belong to.</li>
-          <li><b>Nothing leaves your browser.</b> No account, no upload, no server.</li>
+          <li><b>One connected piece</b> — no supports, no glue.</li>
+          <li><b>A whole guest list at once</b>, packed onto printer beds.</li>
+          <li><b>Polish and Latin Extended</b> throughout.</li>
         </ul>
-
         <div className="tabs">
           <button className={tab === 'single' ? 'on' : ''} onClick={() => setTab('single')}>One tag</button>
           <button className={tab === 'batch' ? 'on' : ''} onClick={() => setTab('batch')}>Guest list</button>

@@ -2,6 +2,8 @@
 
 **[mr4lexndr.github.io/NamR](https://mr4lexndr.github.io/NamR/)**
 
+![Three finished tags, in Yellowtail, Pacifico and Lobster](docs/hero.png)
+
 Turn a name — or a whole guest list — into 3D printable script name tags for
 wedding tables, parties and desks. Type it, see it, download STL or 3MF.
 
@@ -53,7 +55,8 @@ ok   Krzysztof Wojciechowski    comp=1 br=6 91x32x30mm 57Ktri 2.72MB
 
 ## The geometry, confirmed
 
-`ref/AsiaJ.step` settles it. Parsing that B-rep's 462 circles:
+A STEP export of the original CAD model settles it. Parsing that B-rep's 462
+circles:
 
 - every one shares a single axis, direction `(1,0,0)` — parallel to the baseline
 - all centred on one line at `Y = -11.906, Z = 0`

@@ -491,8 +491,14 @@ export const solveLinePlacement = (
   const clear = tb.y0 - bb.y1;
   const shorter = Math.min(tb.y1 - tb.y0, bb.y1 - bb.y0);
   const maxTravel = shorter * opts.maxOverlapFraction;
-  const span = Math.min(tb.x1 - tb.x0, bb.x1 - bb.x0);
-  const areaSum = geom.area(coarse.T) + geom.area(coarse.B);
+  // Reach is set by the longer line, not the shorter. Scaling it to the
+  // shorter one leaves a short first name — Ola, Ewa — barely able to move
+  // sideways, which is exactly the case that needs to.
+  const span = Math.max(tb.x1 - tb.x0, bb.x1 - bb.x0);
+  const areaT = geom.area(coarse.T);
+  const areaB = geom.area(coarse.B);
+  const areaSum = areaT + areaB;
+  const areaMin = Math.max(1, Math.min(areaT, areaB));
 
   /**
    * Total strut a placement would still need: the minimum spanning tree over
@@ -533,28 +539,43 @@ export const solveLinePlacement = (
    * weld costs a few square millimetres; two lines marching through each other
    * cost hundreds, which is the state where the name stops being readable.
    */
-  const cost = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): { score: number; welds: number } => {
+  const cost = (
+    P: { T: Poly[]; B: Poly[] },
+    dx: number,
+    dy: number,
+    ceiling = Infinity,
+  ): { score: number; welds: number } => {
     const moved = translate(P.B, dx, dy);
     const welds = countWelds(P.T, moved, geom, opts.minWeldWidth);
     const merged = geom.union([...ringsOf(P.T), ...ringsOf(moved)]);
     const shared = Math.max(0, areaSum - geom.area(merged));
-    const score =
-      strutLength(P, dx, dy) * 1.5
-      - welds * 4
-      + shared * 0.05
-      + Math.abs(dx) * 0.06;
-    return { score, welds };
+    // Cap the credit for welds. Two or three is all a tag needs, and past
+    // that a high count is not quality: it means the lines have driven
+    // through each other and the intersection has broken into many pieces.
+    // Uncapped, that reads as a dozen excellent joins and wins every time.
+    const useful = Math.min(welds, 3);
+    // Judge overlap as a fraction of the smaller line, not in bare mm². A
+    // short name has little ink, so the few square millimetres that make a
+    // sound weld on a long one already means its capital has been driven
+    // straight through the other line.
+    const drowned = shared / areaMin;
+    const cheap = -useful * 4 + drowned * 60 + Math.abs(dx) * 0.06;
+    // The island tree is by far the costliest term and can only add to the
+    // score, so a placement already worse than the best without it can be
+    // dropped unmeasured. That prunes most of the grid.
+    if (cheap >= ceiling) return { score: cheap, welds };
+    return { score: cheap + strutLength(P, dx, dy) * 1.5, welds };
   };
 
   let best: Placement2D | null = null;
   const consider = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): void => {
-    const { score, welds } = cost(P, dx, dy);
+    const { score, welds } = cost(P, dx, dy, best?.score ?? Infinity);
     if (!best || score < best.score) best = { dx, dy, welds, score };
   };
 
   // Coarse sweep of both axes on heavily decimated outlines...
-  const reach = span * 0.35;
-  const DX = 9, DY = 6;
+  const reach = span * 0.4;
+  const DX = 11, DY = 7;
   for (let i = 0; i <= DX; i++) {
     const dx = -reach + (2 * reach * i) / DX;
     for (let j = 1; j <= DY; j++) {
