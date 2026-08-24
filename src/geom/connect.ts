@@ -483,38 +483,26 @@ export const solveLinePlacement = (
   opts: ConnectOptions,
   simplify: (p: Poly[], tol: number) => Poly[],
 ): Placement2D => {
-  const T = simplify(top, 0.25);
-  const B = simplify(bottom, 0.25);
-  const tb = bboxOf(ringsOf(T));
-  const bb = bboxOf(ringsOf(B));
+  const coarse = { T: simplify(top, 0.5), B: simplify(bottom, 0.5) };
+  const fine = { T: simplify(top, 0.2), B: simplify(bottom, 0.2) };
+
+  const tb = bboxOf(ringsOf(coarse.T));
+  const bb = bboxOf(ringsOf(coarse.B));
   const clear = tb.y0 - bb.y1;
   const shorter = Math.min(tb.y1 - tb.y0, bb.y1 - bb.y0);
   const maxTravel = shorter * opts.maxOverlapFraction;
   const span = Math.min(tb.x1 - tb.x0, bb.x1 - bb.x0);
-
-  const shifted = (dx: number, dy: number): Poly[] => translate(B, dx, dy);
-
-  /** Shallowest overlap at this dx that welds at all, or null. */
-  const depthFor = (dx: number): number | null => {
-    let lo = clear, hi = clear + maxTravel;
-    if (countWelds(T, shifted(dx, hi), geom, opts.minWeldWidth) === 0) return null;
-    for (let i = 0; i < 12; i++) {
-      const mid = (lo + hi) / 2;
-      if (countWelds(T, shifted(dx, mid), geom, opts.minWeldWidth) > 0) hi = mid;
-      else lo = mid;
-    }
-    return hi;
-  };
+  const areaSum = geom.area(coarse.T) + geom.area(coarse.B);
 
   /**
-   * Total strut the placement would still need: the minimum spanning tree
-   * over whatever islands are left. This is the term that matters most.
-   * Counting welds alone is happy to accept a position that welds twice and
-   * then leaves a letter stranded across half the tag, and the strut bridging
-   * that gap is the thing that looks wrong.
+   * Total strut a placement would still need: the minimum spanning tree over
+   * whatever islands are left. This is the term that matters. Counting welds
+   * alone is happy to accept a position that welds twice and then leaves a
+   * letter stranded across half the tag, and the strut bridging that gap is
+   * the thing that looks wrong.
    */
-  const strutLength = (dx: number, dy: number): number => {
-    const islands = geom.union([...ringsOf(T), ...ringsOf(shifted(dx, dy))]);
+  const strutLength = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): number => {
+    const islands = geom.union([...ringsOf(P.T), ...ringsOf(translate(P.B, dx, dy))]);
     const n = islands.length;
     if (n <= 1) return 0;
     const inTree = new Set([0]);
@@ -535,28 +523,56 @@ export const solveLinePlacement = (
     return total;
   };
 
+  /**
+   * Cost of one placement.
+   *
+   * Depth has to be searched, not assumed: the shallowest overlap that welds
+   * is often not the one that reads best, and pushing the lines further into
+   * each other frequently removes a strut altogether. What stops that running
+   * away is the mutual overlap area — how much ink the two lines share. A
+   * weld costs a few square millimetres; two lines marching through each other
+   * cost hundreds, which is the state where the name stops being readable.
+   */
+  const cost = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): { score: number; welds: number } => {
+    const moved = translate(P.B, dx, dy);
+    const welds = countWelds(P.T, moved, geom, opts.minWeldWidth);
+    const merged = geom.union([...ringsOf(P.T), ...ringsOf(moved)]);
+    const shared = Math.max(0, areaSum - geom.area(merged));
+    const score =
+      strutLength(P, dx, dy) * 1.5
+      - welds * 4
+      + shared * 0.05
+      + Math.abs(dx) * 0.06;
+    return { score, welds };
+  };
+
   let best: Placement2D | null = null;
-  // Searching a third of the name's width in 17 steps cuts the worst strut
-  // from 9.9mm to 6.1mm for about 15ms. A narrower sweep settles for a
-  // position that welds but still strands a letter across the tag.
+  const consider = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): void => {
+    const { score, welds } = cost(P, dx, dy);
+    if (!best || score < best.score) best = { dx, dy, welds, score };
+  };
+
+  // Coarse sweep of both axes on heavily decimated outlines...
   const reach = span * 0.35;
-  const steps = 17;
-
-  for (let i = 0; i <= steps; i++) {
-    const dx = -reach + (2 * reach * i) / steps;
-    const dy = depthFor(dx);
-    if (dy === null) continue;
-    // A little past first contact, so the welds have width to them.
-    const seated = dy + 0.4;
-    const welds = countWelds(T, shifted(dx, seated), geom, opts.minWeldWidth);
-    const struts = strutLength(dx, seated);
-    // Struts dominate, then welds; depth and sideways travel only break ties.
-    const score = struts * 1.5 - welds * 6 + (seated - clear) * 0.12 + Math.abs(dx) * 0.08;
-    if (!best || score < best.score) best = { dx, dy: seated, welds, score };
+  const DX = 9, DY = 6;
+  for (let i = 0; i <= DX; i++) {
+    const dx = -reach + (2 * reach * i) / DX;
+    for (let j = 1; j <= DY; j++) {
+      consider(coarse, dx, clear + (maxTravel * j) / DY);
+    }
   }
+  if (!best) return { dx: 0, dy: clear + maxTravel, welds: 0, score: Infinity };
 
-  if (best) return best;
-  return { dx: 0, dy: clear + maxTravel, welds: 0, score: Infinity };
+  // ...then a local refinement at finer resolution around the winner.
+  const seed = best as Placement2D;
+  best = null;
+  const stepX = reach / DX, stepY = maxTravel / DY;
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) {
+      consider(fine, seed.dx + i * stepX, Math.min(clear + maxTravel, seed.dy + j * stepY));
+    }
+  }
+  return best ?? seed;
 };
 
 /**
