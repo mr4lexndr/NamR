@@ -5,6 +5,10 @@ import { loadFont } from '../geom/text';
 import { buildTag } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import { toStl, to3mf } from '../geom/export';
+import { buildBatch } from '../geom/batch';
+import type { BatchOptions, TagReport } from '../geom/batch';
+import type { NameRow } from '../geom/csv';
+import type { Plate } from '../geom/pack';
 
 export interface BuildRequest {
   id: number;
@@ -14,20 +18,33 @@ export interface BuildRequest {
   formats?: ('stl' | '3mf')[];
 }
 
+export interface BatchRequest {
+  id: number;
+  kind: 'batch';
+  rows: NameRow[];
+  opts: BatchOptions;
+}
+
 export interface FontRequest {
   id: number;
   kind: 'font';
   data: ArrayBuffer;
 }
 
-export type Request = BuildRequest | FontRequest;
+export type Request = BuildRequest | BatchRequest | FontRequest;
 
 /** Omit distributes over the union so each variant keeps its own fields. */
-export type RequestInit_ = Omit<BuildRequest, 'id'> | Omit<FontRequest, 'id'>;
+export type RequestInit_ =
+  | Omit<BuildRequest, 'id'>
+  | Omit<BatchRequest, 'id'>
+  | Omit<FontRequest, 'id'>;
 
 export interface BuildResponse {
   id: number;
   ok: boolean;
+  /** Set while a batch is still running; the last message omits it. */
+  progress?: { done: number; total: number; report: TagReport };
+  batch?: { reports: TagReport[]; plates: Plate[]; rejected: number[]; fileCount: number; zip: Uint8Array };
   error?: string;
   /** Transferable geometry for the preview. */
   positions?: Float32Array;
@@ -71,6 +88,19 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
     }
 
     if (!font) throw new Error('no font loaded');
+
+    if (req.kind === 'batch') {
+      const r = buildBatch(font, geom!, req.rows, req.opts, (done, total, report) => {
+        post({ id: req.id, ok: true, progress: { done, total, report } });
+      });
+      post(
+        { id: req.id, ok: true,
+          batch: { reports: r.reports, plates: r.plates, rejected: r.rejected, fileCount: r.files.length, zip: r.zip } },
+        [r.zip.buffer],
+      );
+      return;
+    }
+
     const t0 = performance.now();
     const r = buildTag(font, geom!, req.params);
     const ms = performance.now() - t0;

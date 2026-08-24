@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Viewer } from './Viewer';
+import { Batch } from './Batch';
 import { DEFAULT_TAG } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import type { BuildResponse, Request, RequestInit_ } from './worker';
@@ -69,29 +70,37 @@ export const App = (): React.ReactElement => {
   const [fontName, setFontName] = useState('loading…');
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<'single' | 'batch'>('single');
 
   const worker = useRef<Worker | null>(null);
   const nextId = useRef(1);
-  const pending = useRef(new Map<number, (r: BuildResponse) => void>());
+  const pending = useRef(new Map<number, { resolve: (r: BuildResponse) => void; onProgress?: (r: BuildResponse) => void }>());
   const fontReady = useRef(false);
 
   useEffect(() => {
     const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (ev: MessageEvent<BuildResponse>) => {
-      const fn = pending.current.get(ev.data.id);
-      if (fn) { pending.current.delete(ev.data.id); fn(ev.data); }
+      const entry = pending.current.get(ev.data.id);
+      if (!entry) return;
+      // Progress messages keep the entry alive; anything else settles it.
+      if (ev.data.progress) { entry.onProgress?.(ev.data); return; }
+      pending.current.delete(ev.data.id);
+      entry.resolve(ev.data);
     };
     worker.current = w;
     return () => w.terminate();
   }, []);
 
-  const send = useCallback((req: RequestInit_): Promise<BuildResponse> => {
-    const id = nextId.current++;
-    return new Promise((resolve) => {
-      pending.current.set(id, resolve);
-      worker.current?.postMessage({ ...req, id } as Request);
-    });
-  }, []);
+  const send = useCallback(
+    (req: RequestInit_, onProgress?: (r: BuildResponse) => void): Promise<BuildResponse> => {
+      const id = nextId.current++;
+      return new Promise((resolve) => {
+        pending.current.set(id, { resolve, onProgress });
+        worker.current?.postMessage({ ...req, id } as Request);
+      });
+    },
+    [],
+  );
 
   const loadFontBuffer = useCallback(async (buf: ArrayBuffer, name: string) => {
     const r = await send({ kind: 'font', data: buf });
@@ -161,6 +170,15 @@ export const App = (): React.ReactElement => {
         <h1>NamR</h1>
         <p className="sub">Script name tags you can print.</p>
 
+        <div className="tabs">
+          <button className={tab === 'single' ? 'on' : ''} onClick={() => setTab('single')}>One tag</button>
+          <button className={tab === 'batch' ? 'on' : ''} onClick={() => setTab('batch')}>Guest list</button>
+        </div>
+
+        {tab === 'batch' ? (
+          <Batch params={params} send={send} ready={fontReady.current && !!info} />
+        ) : (
+        <>
         <label className="fld"><span>First name</span>
           <input value={s.first} onChange={(e) => setS({ ...s, first: e.target.value })} />
         </label>
@@ -207,16 +225,18 @@ export const App = (): React.ReactElement => {
             value={s.nudgeX} onChange={(v) => num('nudgeX', v)} />
         </details>
 
-        <label className="fld"><span>Font — {fontName}</span>
-          <input type="file" accept=".ttf,.otf,font/ttf,font/otf"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFont(f); }} />
-        </label>
-        <p className="note">Your font and the names never leave this browser.</p>
-
         <div className="row">
           <button className="primary" disabled={busy || !info} onClick={() => void save('3mf')}>Download 3MF</button>
           <button disabled={busy || !info} onClick={() => void save('stl')}>STL</button>
         </div>
+        </>
+        )}
+
+        <label className="fld top"><span>Font — {fontName}</span>
+          <input type="file" accept=".ttf,.otf,font/ttf,font/otf"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFont(f); }} />
+        </label>
+        <p className="note">Your font and the names never leave this browser.</p>
       </aside>
 
       <main className="stage">

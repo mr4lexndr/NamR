@@ -106,3 +106,41 @@ button.link {
   .panel { border-right: none; border-top: 1px solid var(--line); order: 2; }
   .stage { order: 1; }
 }
+
+.tabs { display: flex; gap: 0; margin-bottom: 18px; }
+.tabs button {
+  border-radius: 0; background: none; border: none;
+  border-bottom: 2px solid transparent; color: var(--dim);
+  padding: 8px 4px; margin-right: 18px; flex: none; font-size: 13px;
+}
+.tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+
+.fld.top { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 22px; }
+
+select {
+  width: 100%; padding: 8px 10px; background: #0f1115;
+  border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 13px;
+}
+
+.paste {
+  width: 100%; padding: 9px 11px; background: #0f1115; border: 1px solid var(--line);
+  border-radius: 7px; color: var(--ink); font-size: 13px; font-family: ui-monospace, monospace;
+  resize: vertical; margin-bottom: 10px;
+}
+.paste:focus { outline: none; border-color: var(--accent); }
+
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+button.wide { width: 100%; margin-bottom: 12px; }
+
+.plates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+.plates figure { margin: 0; }
+.plates figcaption { font-size: 11px; color: var(--dim); margin-top: 4px; text-align: center; }
+.bedmap { width: 100%; display: block; border-radius: 5px; }
+.bedbg { fill: #0f1115; stroke: var(--line); stroke-width: 2; }
+.slot { fill: color-mix(in srgb, var(--accent) 55%, transparent); stroke: var(--accent); stroke-width: 0.8; }
+
+.problems { list-style: none; padding: 0; margin: 14px 0 0; font-size: 11.5px; }
+.problems li { padding: 5px 0; border-top: 1px solid var(--line); color: var(--dim); }
+.problems li b { color: var(--ink); font-weight: 600; }
+.problems li.warn b { color: var(--warn); }
+.problems li.bad b { color: var(--bad); }
