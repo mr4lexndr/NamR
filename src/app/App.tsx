@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Viewer } from './Viewer';
 import { Batch } from './Batch';
 import { Editor } from './Editor';
+import { Wordmark } from './Wordmark';
 import type { Bridge } from '../geom/connect';
 import { DEFAULT_TAG } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
@@ -217,7 +218,7 @@ export const App = (): React.ReactElement => {
   return (
     <div className="app">
       <aside className="panel">
-        <h1>NamR</h1>
+        <h1><Wordmark /></h1>
         <p className="sub">
           Script name tags for weddings, parties and desks.
         </p>
@@ -240,6 +241,7 @@ export const App = (): React.ReactElement => {
         </label>
         <label className="fld"><span>Surname</span>
           <input value={s.last} onChange={(e) => setS({ ...s, last: e.target.value })} />
+          <em>Leave empty for a one-line tag.</em>
         </label>
 
         <Slider label="Font height" unit="mm" min={6} max={60} step={0.5}

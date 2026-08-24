@@ -41,9 +41,11 @@ as **one connected solid**: no supports, no glue, no assembly.
 | Bed packing / batches | done |
 | Bridge editor | not started |
 
-Validated on 15 Polish names across all nine faces (135 combinations): every
-one resolves to a single watertight, correctly oriented component with at
-least two links between the lines. 117 of them need no strut at all.
+Validated on 17 Polish names across all nine faces (153 combinations): every
+one resolves to a single watertight, correctly oriented component, held
+together on at least two different pairs of letters. 108 need no strut at all.
+
+Leaving the surname empty gives a one-line tag.
 
 ```
 ok   Ryszard Jasiński           comp=1 br=3 56x32x30mm 41Ktri 1.95MB
