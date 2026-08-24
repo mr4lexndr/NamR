@@ -39,9 +39,9 @@ as **one connected solid**: no supports, no glue, no assembly.
 | Bed packing / batches | done |
 | Bridge editor | not started |
 
-Validated on 12 Polish names across all nine faces (108 combinations): every
+Validated on 15 Polish names across all nine faces (135 combinations): every
 one resolves to a single watertight, correctly oriented component with at
-least two links between the lines, needing 0.6 struts per tag on average.
+least two links between the lines. 117 of them need no strut at all.
 
 ```
 ok   Ryszard Jasiński           comp=1 br=3 56x32x30mm 41Ktri 1.95MB
@@ -96,23 +96,44 @@ src/geom/
 2. **Mark detection.** A glyph whose rings form more than one island — `i` and
    its tittle, `ń` and its acute — yields marks for every island but the
    largest. Provenance is kept per contour.
-3. **Line overlap.** Binary search the vertical offset until the two lines
-   share a weld at least `minWeldWidth` across. The predicate is monotone, so
-   the first offset that welds is the shallowest one that does.
-4. **Stems.** Each mark is tied to *its own* letter. Proximity alone would
+3. **Stems.** Each mark is tied to *its own* letter. Proximity alone would
    graft an `i` tittle onto whichever letter happens to be nearest, which on a
    tight script is often the wrong one.
-5. **Tightening.** A script is meant to join up, so a gap between letters is
+4. **Tightening.** A script is meant to join up, so a gap between letters is
    closed by pulling them together rather than bridging across it — the result
    reads as handwriting instead of two letters wired together. Each letter may
-   travel `letterTighten`; anything still apart is left to bridging. Struts
-   dropped from ~2-4 per tag to 0.6 on average when this went in.
+   travel `letterTighten`; anything still apart is left to bridging. A shift is
+   rejected if it pushes a letter into a neighbour's counter, and the finished
+   word is compared against the untightened one, so it can never make things
+   worse.
+5. **Line placement.** Sliding the surname straight up is the wrong single
+   degree of freedom: two lines of script interlock at particular horizontal
+   offsets, where a descender drops into the gap between two ascenders. Depth
+   has to be searched too — the shallowest overlap that welds is often not the
+   one that reads best, and pushing the lines further into each other
+   frequently removes a strut altogether.
+
+   Placements are costed by the strut they would still need, as the minimum
+   spanning tree over whatever islands remain. Counting welds alone accepts a
+   position that welds twice and then strands a letter across half the tag,
+   and the strut spanning that gap is the thing that looks wrong. What keeps
+   deeper overlaps honest is the *mutual overlap area*: a weld costs a few
+   square millimetres, two lines marching through each other cost hundreds,
+   which is where the name stops being readable.
+
+   A coarse sweep of both axes on heavily decimated outlines, then a local
+   refinement at finer resolution. 117 of 135 test tags need no strut at all;
+   the mean longest strut is 0.4mm. The two lines must still meet in at least
+   two places, because one contact is a hinge that snaps.
 6. **Closing.** Morphological closing (dilate then erode by `weldRadius`)
    welds gaps up to `2 × weldRadius` without fattening the letterforms.
-6. **Bridging.** Islands that survive are joined by a minimum spanning tree
+7. **Bridging.** Islands that survive are joined by a minimum spanning tree
    over inter-island distance: n islands need exactly n−1 bridges, each placed
-   where the letters already almost touch.
-9. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
+   where the letters already almost touch. A second pass runs after filleting,
+   because two strokes meeting at a single point come back from the union as
+   one self-touching ring and only fall apart once the pinch is resolved — a
+   contact with no width was never a connection worth counting.
+8. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
    then trapped slivers are filled. A hole has to fail two tests before it
    goes. *Provenance:* a counter is enclosed by one glyph on its own, so an
    open bowl that welding seals still counts — Yellowtail's R is one, and
@@ -120,10 +141,14 @@ src/geom/
    between two adjacent letters belongs to neither of them, but it is the eye
    of the script, and filling it turns the word solid. Only a hole that is
    both foreign and tiny is an artifact.
-10. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
+9. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
    error, and clears the slivers that make ear-clipping drop a triangle.
-11. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
+10. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
    Checked watertight before export.
+
+Every step above is editable by hand afterwards: any link can be removed or
+dragged, and the surname can be repositioned directly, with the solver
+respecting those choices on the next rebuild.
 
 ### Orbiting
 
