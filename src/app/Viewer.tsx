@@ -5,6 +5,8 @@ import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.j
 interface Props {
   positions: Float32Array | null;
   indices: Uint32Array | null;
+  /** Revolve angle, which sets where the readable face points. */
+  sweepAngle: number;
 }
 
 /** Below this the sweep bands shade as one smooth surface; above it stays a hard edge. */
@@ -13,17 +15,15 @@ const FOV_DEG = 38;
 /** Breathing room around the model when framing it. */
 const FIT_MARGIN = 1.12;
 
-export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
+export const Viewer = ({ positions, indices, sweepAngle }: Props): React.ReactElement => {
   const host = useRef<HTMLDivElement>(null);
   const mesh = useRef<THREE.Mesh | null>(null);
   const scene = useRef<THREE.Scene | null>(null);
 
   // Spherical camera around `target`; panning slides the target.
-  // The alpha = 0 cap carries the readable text and sits at minimum z, so the
-  // camera belongs below and in front of the tag. Orbiting up and behind, the
-  // obvious-looking default, shows only the backs of the swept strokes.
-  const HOME_AZ = -0.5;
-  const HOME_EL = -0.6;
+  // Home is the readable face, a touch off-axis so the depth shows.
+  const HOME_AZ = 0.2;
+  const HOME_EL = 0.13;
 
   const cam = useRef({
     az: HOME_AZ, el: HOME_EL, dist: 160,
@@ -53,13 +53,29 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
     fill.position.set(70, -30, -50);
     sc.add(fill);
 
+    /**
+     * Orbit in the readable face's own frame rather than the world's.
+     *
+     * That face is tilted by the sweep angle, so orbiting about world-up
+     * merely rolls the name diagonally across the screen instead of walking
+     * around it. Building the basis from the face — baseline to the right, its
+     * own up, its normal out — makes a horizontal drag mean "look from the
+     * side" and keeps the writing level.
+     */
     const place = (): void => {
       const c = cam.current;
-      camera.position.set(
-        c.target.x + c.dist * Math.cos(c.el) * Math.sin(c.az),
-        c.target.y + c.dist * Math.sin(c.el),
-        c.target.z + c.dist * Math.cos(c.el) * Math.cos(c.az),
-      );
+      const a = (sweepAngle * Math.PI) / 180;
+      const right = new THREE.Vector3(1, 0, 0);
+      const up = new THREE.Vector3(0, Math.cos(a), Math.sin(a));
+      const normal = new THREE.Vector3(0, -Math.sin(a), Math.cos(a));
+
+      const dir = new THREE.Vector3()
+        .addScaledVector(normal, Math.cos(c.el) * Math.cos(c.az))
+        .addScaledVector(right, Math.cos(c.el) * Math.sin(c.az))
+        .addScaledVector(up, Math.sin(c.el));
+
+      camera.up.copy(up);
+      camera.position.copy(c.target).addScaledVector(dir, c.dist);
       camera.lookAt(c.target);
     };
 
