@@ -18,9 +18,10 @@ whole thing hosts as a static site on GitHub Pages.
 | Profile decimation | done |
 | 3D mesh (60° revolve) | done |
 | STL / 3MF export | done |
+| Web UI + 3D preview | done |
 | Bed packing / batches | not started |
 | CSV bulk import | not started |
-| Web UI + 3D preview | not started |
+| Bridge editor | not started |
 
 Validated on 12 Polish names: all resolve to a single watertight, correctly
 oriented component at ~67ms each.
@@ -105,18 +106,25 @@ advisories for code that imports neither. `.npmrc` sets `legacy-peer-deps`.
 
 ## Fonts
 
-Brush Script MT is Monotype-licensed and cannot ship in a web app. The plan is
-open script faces bundled as defaults plus drag-and-drop for your own TTF/OTF,
-processed locally. Brush Script has full Polish coverage and is used for local
-validation via `FONT=`.
+Brush Script MT is Monotype-licensed and cannot ship in a web app, so the
+bundled defaults are Pacifico and Yellowtail — both open-licensed, both with
+complete Polish coverage, both solving to a single piece on the test names.
+Drag in your own TTF/OTF for anything else; it is parsed in the browser and
+never uploaded. Brush Script is used for local validation via `FONT=`.
 
 ## Development
 
 ```sh
 npm install
-npm run spike -- Ryszard Jasiński     # one tag -> out/tag.stl, out/tag.3mf
+npm run dev                           # the app, at localhost:5173/NamR/
+npm run build                         # production build into dist/
+
+npm run spike -- Ryszard Jasiński     # headless: one tag -> out/tag.stl, .3mf
 FONT=/path/to/font.ttf npm run spike  # try another face
 ```
+
+Pushing to `main` deploys to GitHub Pages. Enable it once under
+Settings -> Pages -> Source: GitHub Actions.
 
 `scripts/render_stl.py` software-renders an STL with a z-buffer for eyeballing
 geometry without a browser.

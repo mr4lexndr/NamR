@@ -1,4 +1,5 @@
-import opentype from 'opentype.js';
+import { parseFont } from './opentype';
+import type { Font, Path } from './opentype';
 import type { Contour, Ring } from './types';
 import { bboxOf, ringArea } from './types';
 import type { Geom } from './clipper';
@@ -21,13 +22,13 @@ const FALLBACK: Record<string, string> = {
 };
 
 export interface LoadedFont {
-  font: opentype.Font;
+  font: Font;
   familyName: string;
   missingGlyphs: string[];
 }
 
 export const loadFont = (data: ArrayBuffer): LoadedFont => {
-  const font = opentype.parse(data);
+  const font = parseFont(data);
   return {
     font,
     familyName: font.names.fontFamily?.en ?? font.names.fullName?.en ?? 'Unnamed',
@@ -37,7 +38,7 @@ export const loadFont = (data: ArrayBuffer): LoadedFont => {
 
 /** Substitute characters the font cannot draw, reporting what was swapped. */
 export const substituteMissing = (
-  font: opentype.Font,
+  font: Font,
   text: string,
 ): { text: string; substituted: string[] } => {
   const substituted: string[] = [];
@@ -63,7 +64,7 @@ export const substituteMissing = (
  * quadratic segments; subdivision count is chosen per segment from its
  * control-polygon length so the chord error stays under `tolerance`.
  */
-const flattenPath = (path: opentype.Path, tolerance: number): Ring[] => {
+const flattenPath = (path: Path, tolerance: number): Ring[] => {
   const rings: Ring[] = [];
   let cur: Ring = [];
   let x = 0, y = 0;
@@ -122,7 +123,7 @@ const flattenPath = (path: opentype.Path, tolerance: number): Ring[] => {
  * Y is flipped from font space so the result is y-up like the rest of the app.
  */
 export const textToContours = (
-  font: opentype.Font,
+  font: Font,
   text: string,
   line: number,
   opts: TextOptions,

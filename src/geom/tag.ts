@@ -1,4 +1,4 @@
-import type opentype from 'opentype.js';
+import type { Font } from './opentype';
 import type { Poly } from './types';
 import { bboxOf } from './types';
 import type { Geom } from './clipper';
@@ -71,7 +71,7 @@ export interface TagResult {
  * revolve. Everything the app produces goes through here so the preview, the
  * downloaded file and the packed plate can never disagree.
  */
-export const buildTag = (font: opentype.Font, geom: Geom, params: TagParams): TagResult => {
+export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult => {
   const warnings: string[] = [];
   const substituted: string[] = [];
 
