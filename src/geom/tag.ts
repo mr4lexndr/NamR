@@ -4,7 +4,9 @@ import { bboxOf } from './types';
 import type { Geom } from './clipper';
 import { substituteMissing, textToContours } from './text';
 import type { Bridge, ConnectOptions } from './connect';
-import { DEFAULT_CONNECT, connect, solveLineOverlap, tightenLine, translateContours } from './connect';
+import {
+  DEFAULT_CONNECT, connect, solveLinePlacement, tightenLine, translateContours,
+} from './connect';
 import type { Mesh, SweepOptions } from './sweep';
 import { DEFAULT_SWEEP, meshBounds, sweepTag } from './sweep';
 import { simplifyPolys } from './simplify';
@@ -37,6 +39,8 @@ export interface TagParams {
   /** Profile decimation tolerance, mm. */
   simplifyTol: number;
   manualBridges: Bridge[];
+  /** Ids of automatic links the user has removed. */
+  suppressedBridges: string[];
   minFeature: number;
 }
 
@@ -49,6 +53,7 @@ export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
   flattenTol: 0.02,
   simplifyTol: 0.02,
   manualBridges: [],
+  suppressedBridges: [],
   minFeature: 0.8,
 };
 
@@ -66,6 +71,10 @@ export interface TagResult {
   warnings: string[];
   /** The vertical overlap that was used, so the UI can show and override it. */
   overlapY: number;
+  /** Horizontal placement of the surname, including any nudge. */
+  offsetX: number;
+  /** Places the two lines overlap on their own, before any strut. */
+  naturalWelds: number;
   /** How many places the two lines are tied together. */
   lineLinks: number;
   substituted: string[];
@@ -122,35 +131,39 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
     throw new Error('nothing to draw');
   }
 
+  let overlapY = params.overlapY ?? 0;
+  let offsetX = params.nudgeX;
+  let naturalWelds = 0;
+
   if (top.length > 0 && bottom.length > 0) {
     const bt = bboxOf(top.map((c) => c.ring));
     const bb = bboxOf(bottom.map((c) => c.ring));
-    const dx =
+    const align =
       params.align === 'left' ? bt.x0 - bb.x0
       : params.align === 'right' ? bt.x1 - bb.x1
       : (bt.x0 + bt.x1) / 2 - (bb.x0 + bb.x1) / 2;
-    bottom = translateContours(bottom, dx + params.nudgeX, 0);
+    bottom = translateContours(bottom, align, 0);
+
+    if (params.overlapY === undefined) {
+      const spot = solveLinePlacement(
+        geom.union(top.map((c) => c.ring)),
+        geom.union(bottom.map((c) => c.ring)),
+        geom,
+        conn,
+        simplifyPolys,
+      );
+      overlapY = spot.dy;
+      offsetX = spot.dx + params.nudgeX;
+      naturalWelds = spot.welds;
+    }
+    bottom = translateContours(bottom, offsetX, overlapY);
   }
 
-  let overlapY = params.overlapY ?? 0;
-  let naturalWeld = true;
-  if (params.overlapY === undefined && top.length > 0 && bottom.length > 0) {
-    const solved = solveLineOverlap(
-      geom.union(top.map((c) => c.ring)),
-      geom.union(bottom.map((c) => c.ring)),
-      geom,
-      conn,
-    );
-    overlapY = solved.dy;
-    naturalWeld = solved.welded;
-  }
-  bottom = translateContours(bottom, 0, overlapY);
-
-  const solved = connect([...top, ...bottom], geom, conn, params.manualBridges);
+  const solved = connect([...top, ...bottom], geom, conn, params.manualBridges, params.suppressedBridges);
   warnings.push(...solved.warnings);
   // Only worth mentioning if bridging did not rescue it: the lines not
   // touching on their own is normal on a light face.
-  if (!naturalWeld && solved.lineLinks < conn.minLineLinks) {
+  if (naturalWelds === 0 && solved.lineLinks < conn.minLineLinks) {
     warnings.push('the lines do not overlap; try a deeper line overlap');
   }
 
@@ -175,6 +188,8 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
     lineLinks: solved.lineLinks,
     warnings,
     overlapY,
+    offsetX,
+    naturalWelds,
     substituted,
     bounds: meshBounds(mesh),
     ok: solved.components === 1,
