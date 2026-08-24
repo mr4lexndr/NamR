@@ -69,7 +69,14 @@ export class Geom {
    */
   close(polys: Poly[], r: number): Poly[] {
     if (r <= 0) return polys;
-    return this.offset(this.offset(polys, r), -r);
+    const closed = this.offset(this.offset(polys, r), -r);
+    // Closing is extensive in exact arithmetic, but the polygonal
+    // approximation of the round joins lets the erosion cut marginally deeper
+    // than the dilation grew. On a weld only as wide as r that severs the
+    // shape. Unioning the input back enforces the guarantee.
+    const rings = closed.flatMap((p) => [p.outer, ...p.holes])
+      .concat(polys.flatMap((p) => [p.outer, ...p.holes]));
+    return this.union(rings);
   }
 
   /** True if every stroke is at least `w` wide; erosion by w/2 wipes out anything thinner. */

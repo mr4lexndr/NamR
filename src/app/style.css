@@ -148,11 +148,14 @@ button.wide { width: 100%; margin-bottom: 12px; }
 .help { font-size: 11.5px; color: var(--dim); margin: 0 0 8px; line-height: 1.5; }
 .help b { color: var(--ink); font-weight: 600; }
 .help.dimmer { opacity: 0.8; margin-bottom: 12px; }
-.sample {
-  margin: 0 0 10px; padding: 8px 10px; background: #0f1115;
-  border: 1px solid var(--line); border-radius: 6px;
-  font: 12px/1.6 ui-monospace, monospace; color: var(--ink); white-space: pre;
+table.sample {
+  width: 100%; margin: 0 0 12px; border-collapse: collapse;
+  background: #0f1115; border: 1px solid var(--line); border-radius: 6px;
+  font: 11.5px/1.5 ui-monospace, monospace;
 }
+table.sample td { padding: 5px 9px; color: var(--ink); }
+table.sample td:last-child { color: var(--dim); text-align: right; }
+table.sample tr + tr td { border-top: 1px solid var(--line); }
 input[type='number'] {
   width: 100%; padding: 8px 10px; background: #0f1115;
   border: 1px solid var(--line); border-radius: 7px; color: var(--ink); font-size: 13px;

@@ -66,6 +66,8 @@ export interface TagResult {
   warnings: string[];
   /** The vertical overlap that was used, so the UI can show and override it. */
   overlapY: number;
+  /** How many places the two lines are tied together. */
+  lineLinks: number;
   substituted: string[];
   bounds: ReturnType<typeof meshBounds>;
   ok: boolean;
@@ -152,6 +154,7 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
     mesh,
     bridges: solved.bridges,
     components: solved.components,
+    lineLinks: solved.lineLinks,
     warnings,
     overlapY,
     substituted,

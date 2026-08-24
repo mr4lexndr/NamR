@@ -14,6 +14,20 @@ export interface ConnectOptions {
   /** A weld must be at least this wide to survive printing and handling. */
   minWeldWidth: number;
   /**
+   * Ceiling on how far the two lines may be pushed together, as a fraction of
+   * the shorter line's height. Without it a light face needs so much overlap
+   * to make a wide enough weld that the lines march through each other and
+   * the name stops being readable. Past this the links come from bridges.
+   */
+  maxOverlapFraction: number;
+  /**
+   * The two lines must meet in at least this many places. One contact is a
+   * hinge: the tag flexes there and snaps when handled.
+   */
+  minLineLinks: number;
+  /** Link sites must be at least this far apart, so they brace rather than double up. */
+  linkSeparation: number;
+  /**
    * Rounds the concave corners where a bridge meets a stroke, so a connector
    * flows into the letter instead of butting against it. Applied after
    * bridging, which is what separates it from `weldRadius`.
@@ -33,6 +47,9 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   stemWidth: 0.9,
   maxBridgeLength: 12,
   minWeldWidth: 0.9,
+  maxOverlapFraction: 0.45,
+  minLineLinks: 2,
+  linkSeparation: 14,
   filletRadius: 0.25,
   minHoleArea: 3,
 };
@@ -52,6 +69,8 @@ export interface Bridge {
 export interface ConnectResult {
   polys: Poly[];
   bridges: Bridge[];
+  /** How many places the two lines are tied together. */
+  lineLinks: number;
   /** 1 means the tag is a single printable piece. */
   components: number;
   warnings: string[];
@@ -214,6 +233,74 @@ export const dropSliverHoles = (polys: Poly[], minArea: number): Poly[] => {
   }));
 };
 
+/**
+ * Guarantee the two lines are tied together in several places. Natural welds
+ * from the overlap count, as do bridges already spanning the gap; whatever is
+ * missing gets added at the next-closest approaches, kept `linkSeparation`
+ * apart so they brace the tag instead of stacking up in one spot.
+ */
+export const linkLines = (
+  top: Poly[],
+  bottom: Poly[],
+  geom: Geom,
+  opts: ConnectOptions,
+): { bridges: Bridge[]; links: number } => {
+  const bridges: Bridge[] = [];
+  if (top.length === 0 || bottom.length === 0) return { bridges, links: 0 };
+
+  // Existing contact patches: where the two lines already share material.
+  const shared = intersect(top, bottom, geom);
+  const sites: Pt[] = shared.map((p) => {
+    const b = bboxOf([p.outer]);
+    return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
+  });
+
+  // On a short name two links cannot be `linkSeparation` apart, so scale the
+  // requirement to the tag and relax it further rather than give up on the
+  // second link -- a single contact is the failure worth avoiding.
+  const width = bboxOf(ringsOf(top).concat(ringsOf(bottom))).x1
+    - bboxOf(ringsOf(top).concat(ringsOf(bottom))).x0;
+  let sep = Math.min(opts.linkSeparation, width * 0.35);
+  const farEnough = (p: Pt): boolean =>
+    sites.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= sep);
+
+  // Candidate contacts, nearest first: every top vertex against the bottom.
+  const cands: { a: Pt; b: Pt; d: number }[] = [];
+  for (const ring of ringsOf(top)) {
+    for (const p of ring) {
+      let best = { pt: p, d2: Infinity };
+      for (const e of ringsOf(bottom)) {
+        for (let i = 0, j = e.length - 1; i < e.length; j = i++) {
+          const { pt, d2 } = nearestOnSeg(p, e[j]!, e[i]!);
+          if (d2 < best.d2) best = { pt, d2 };
+        }
+      }
+      if (best.d2 < Infinity) cands.push({ a: p, b: best.pt, d: Math.sqrt(best.d2) });
+    }
+  }
+  cands.sort((x, y) => x.d - y.d);
+
+  for (let pass = 0; pass < 3 && sites.length < opts.minLineLinks; pass++) {
+    if (pass > 0) sep /= 2;
+    for (const c of cands) {
+      if (sites.length >= opts.minLineLinks) break;
+      if (c.d > opts.maxBridgeLength) break;
+      const mid = { x: (c.a.x + c.b.x) / 2, y: (c.a.y + c.b.y) / 2 };
+      if (!farEnough(mid)) continue;
+      const ends = overshoot(c.a, c.b, opts.bridgeWidth * 0.6);
+      bridges.push({
+        id: `link:${bridges.length}`,
+        a: ends.a, b: ends.b,
+        width: opts.bridgeWidth,
+        kind: 'auto',
+      });
+      sites.push(mid);
+    }
+  }
+
+  return { bridges, links: sites.length };
+};
+
 export const applyBridges = (polys: Poly[], bridges: Bridge[], geom: Geom): Poly[] => {
   if (bridges.length === 0) return polys;
   const rings = ringsOf(polys);
@@ -237,9 +324,11 @@ export const solveLineOverlap = (
   const tb = bboxOf(ringsOf(top));
   const bb = bboxOf(ringsOf(bottom));
 
-  // Start clear of each other, then close the gap by at most the taller line.
+  // Start clear of each other, then close the gap by at most a fraction of
+  // the shorter line, so the two never march through one another.
   const clear = tb.y0 - bb.y1;
-  const maxTravel = Math.max(tb.y1 - tb.y0, bb.y1 - bb.y0);
+  const shorter = Math.min(tb.y1 - tb.y0, bb.y1 - bb.y0);
+  const maxTravel = shorter * opts.maxOverlapFraction;
 
   const welds = (dy: number): boolean => {
     const moved = translate(bottom, 0, dy);
@@ -248,7 +337,9 @@ export const solveLineOverlap = (
   };
 
   let lo = clear;              // no overlap
-  let hi = clear + maxTravel;  // deeply overlapped
+  let hi = clear + maxTravel;  // as deep as we allow
+  // Not welding at the cap is fine and common on a light face: bridges take
+  // over from here.
   if (!welds(hi)) return { dy: hi, welded: false };
 
   for (let i = 0; i < 24; i++) {
@@ -291,6 +382,14 @@ export const connect = (
   polys = applyBridges(polys, [...stems, ...manual], geom);
   polys = geom.close(polys, opts.weldRadius);
 
+  const top = geom.union(contours.filter((c) => c.line === 0).map((c) => c.ring));
+  const bottom = geom.union(contours.filter((c) => c.line !== 0).map((c) => c.ring));
+  const { bridges: links, links: lineLinks } = linkLines(top, bottom, geom, opts);
+  polys = applyBridges(polys, links, geom);
+  if (lineLinks < opts.minLineLinks) {
+    warnings.push(`the two lines meet in only ${lineLinks} place${lineLinks === 1 ? '' : 's'}`);
+  }
+
   const { bridges: auto, warnings: w } = bridgeIslands(polys, opts);
   warnings.push(...w);
   polys = applyBridges(polys, auto, geom);
@@ -301,8 +400,20 @@ export const connect = (
   polys = geom.close(polys, opts.filletRadius);
   polys = dropSliverHoles(polys, opts.minHoleArea);
 
+  // Two strokes meeting at a single point come back from the union as one
+  // self-touching ring, so the island pass above sees a shape that is already
+  // whole. Filleting resolves the pinch and the piece falls in two. Checking
+  // again here catches exactly that: a contact with no width was never a
+  // connection worth counting.
+  if (polys.length > 1) {
+    const { bridges: extra, warnings: w2 } = bridgeIslands(polys, opts);
+    warnings.push(...w2);
+    polys = applyBridges(polys, extra, geom);
+    auto.push(...extra);
+  }
+
   const components = polys.length;
   if (components > 1) warnings.push(`${components} separate pieces remain`);
 
-  return { polys, bridges: [...stems, ...manual, ...auto], components, warnings };
+  return { polys, bridges: [...stems, ...manual, ...links, ...auto], components, lineLinks, warnings };
 };

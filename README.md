@@ -23,9 +23,9 @@ whole thing hosts as a static site on GitHub Pages.
 | Bed packing / batches | done |
 | Bridge editor | not started |
 
-Validated on 12 Polish names across Brush Script, Pacifico and Yellowtail:
-every one resolves to a single watertight, correctly oriented component with
-its text face on z = 0, at 60–83ms each.
+Validated on 12 Polish names across all nine faces (108 combinations): every
+one resolves to a single watertight, correctly oriented component with its
+text face on z = 0 and at least two links between the lines.
 
 ```
 ok   Ryszard Jasiński           comp=1 br=3 56x32x30mm 41Ktri 1.95MB
@@ -91,13 +91,13 @@ src/geom/
 6. **Bridging.** Islands that survive are joined by a minimum spanning tree
    over inter-island distance: n islands need exactly n−1 bridges, each placed
    where the letters already almost touch.
-7. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
+8. **Fillet and tidy.** A small closing rounds where connectors meet strokes,
    then holes under `minHoleArea` are dropped — welding two strokes that pass
    close together traps slivers of background that read as defects, while real
    counters in a 20mm script run 5mm² and up.
-8. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
+9. **Decimate.** Douglas-Peucker at 0.02mm. Cuts points ~3× for 0.07% area
    error, and clears the slivers that make ear-clipping drop a triangle.
-9. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
+10. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
    Checked watertight before export.
 
 ### Print orientation
@@ -122,6 +122,14 @@ predictable, which matters when you have to recognise the plate in a slicer.
 The download is a zip of either one file per plate or one per tag, plus a
 `manifest.csv` naming every tag, its plate and any warning.
 
+### A closing that could not be trusted
+
+Morphological closing is extensive — the result always contains the input — so
+it can never split a shape. The polygonal approximation of its round joins can,
+though: the erosion cuts marginally deeper than the dilation grew, and on a
+weld only as wide as the radius that severs the piece. `Geom.close` unions the
+input back in to enforce the guarantee the maths already promised.
+
 ### Two library findings
 
 **`clipper2-js` is not usable.** Its negative offsets return garbage and miter
@@ -136,11 +144,15 @@ advisories for code that imports neither. `.npmrc` sets `legacy-peer-deps`.
 
 ## Fonts
 
-Brush Script MT is Monotype-licensed and cannot ship in a web app, so the
-bundled defaults are Pacifico and Yellowtail — both open-licensed, both with
-complete Polish coverage, both solving to a single piece on the test names.
-Drag in your own TTF/OTF for anything else; it is parsed in the browser and
-never uploaded. Brush Script is used for local validation via `FONT=`.
+Brush Script MT belongs to Monotype and cannot be redistributed, so the app
+bundles eight open-licensed connected scripts instead — Yellowtail, Pacifico,
+Lobster, Damion, Norican, Sacramento, Alex Brush and Great Vibes. All have
+complete Polish coverage and all solve to a single piece across the test
+names. They are fetched on demand, so only the chosen one is downloaded.
+
+Anything else can be loaded from disk; it is parsed in the browser and never
+uploaded, which is also how to use a licensed face you already own.
+Brush Script is used for local validation via `FONT=`.
 
 ## Development
 
