@@ -22,7 +22,7 @@ const man = checkManifold(r.mesh);
 const b = r.bounds;
 console.log(`${first} ${last}`);
 console.log(`  components ${r.components} | bridges ${r.bridges.length} | overlapY ${r.overlapY.toFixed(2)}mm`);
-console.log(`  em ${r.emMm.toFixed(2)}mm (front line ${DEFAULT_TAG.frontHeight}mm) | profile ${countPoints(r.polys)} pts | arc segments ${arcSegments(DEFAULT_TAG.sweep, 25)}`);
+console.log(`  font ${r.emMm.toFixed(1)}mm | line ${r.frontLineMm.toFixed(1)}mm | both ${r.profileMm.toFixed(1)}mm | profile ${countPoints(r.polys)} pts | arc segments ${arcSegments(DEFAULT_TAG.sweep, 25)}`);
 console.log(`  mesh ${(r.mesh.indices.length/3).toLocaleString()} tris`);
 console.log(`  bounds ${b.dx.toFixed(1)} x ${b.dy.toFixed(1)} x ${b.dz.toFixed(1)}mm`);
 console.log(`  manifold closed=${man.closed} oriented=${man.oriented} open=${man.openEdges} flipped=${man.flippedEdges}`);

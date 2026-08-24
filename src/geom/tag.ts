@@ -16,16 +16,7 @@ export type Align = 'center' | 'left' | 'right';
 export interface TagParams {
   first: string;
   last: string;
-  /**
-   * Ink height of the front (surname) line in mm, measured lowest to highest.
-   * Set this to dimension by the finished line instead of the type size;
-   * takes precedence over `sizeMm`. Leave unset to size by em.
-   */
-  frontHeight?: number;
-  /**
-   * Em size in mm — the number you type into Fusion's text Height field.
-   * Used directly unless `frontHeight` is set.
-   */
+  /** Font height in mm: the type size the lettering is set at. */
   sizeMm: number;
   align: Align;
   /** Horizontal nudge of the surname relative to the first name. */
@@ -58,7 +49,7 @@ export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
 };
 
 export interface TagResult {
-  /** The em size actually used, after solving for `frontHeight`. */
+  /** The font height used, echoed back for the readout. */
   emMm: number;
   /** Ink height of the front line, for comparing against a CAD dimension. */
   frontLineMm: number;
@@ -91,26 +82,12 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   const warnings: string[] = [];
   const substituted: string[] = [];
 
-  const lineOf = (text: string, idx: number, em: number) => {
+  const em = params.sizeMm;
+  const lineOf = (text: string, idx: number) => {
     const sub = substituteMissing(font, text);
     substituted.push(...sub.substituted);
     return textToContours(font, sub.text, idx, { sizeMm: em, tolerance: params.flattenTol }, geom);
   };
-
-  // Solve the em size so the front line's ink is exactly `frontHeight` tall.
-  // Outlines scale linearly with em, so one probe pass at a reference size is
-  // enough; rebuilding at the solved size keeps the flattening tolerance
-  // meaningful rather than 5x finer than needed.
-  let em = params.sizeMm;
-  if (params.frontHeight && params.frontHeight > 0) {
-    const REF = 100;
-    const probeText = params.last.trim() || params.first;
-    const probe = lineOf(probeText, 1, REF);
-    substituted.length = 0;
-    const pb = bboxOf(probe.map((c) => c.ring));
-    const h = pb.y1 - pb.y0;
-    if (h > 0) em = (REF * params.frontHeight) / h;
-  }
 
   // Connection settings are quoted at a 20mm em; scale them so a tag behaves
   // the same at any size. Areas scale with the square.
@@ -124,8 +101,8 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
 
   // Close the gaps inside each line before the lines are positioned, so the
   // overlap search sees the shapes it will actually have to weld.
-  const top = tightenLine(lineOf(params.first, 0, em), geom, conn);
-  let bottom = tightenLine(lineOf(params.last, 1, em), geom, conn);
+  const top = tightenLine(lineOf(params.first, 0), geom, conn);
+  let bottom = tightenLine(lineOf(params.last, 1), geom, conn);
 
   if (top.length === 0 && bottom.length === 0) {
     throw new Error('nothing to draw');
