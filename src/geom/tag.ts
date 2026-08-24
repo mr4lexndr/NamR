@@ -14,7 +14,14 @@ export type Align = 'center' | 'left' | 'right';
 export interface TagParams {
   first: string;
   last: string;
-  /** Height of the em square in mm; the front height of the finished tag. */
+  /**
+   * Ink height of the front (surname) line in mm, measured from the lowest
+   * point. This is the "front height" the reference model is dimensioned by:
+   * in ref/AsiaJ.step the lowest ink sits at radius 5.000 and that line runs
+   * to radius ~25. Takes precedence over `sizeMm` when set.
+   */
+  frontHeight?: number;
+  /** Em size in mm. Used directly only when `frontHeight` is unset. */
   sizeMm: number;
   align: Align;
   /** Horizontal nudge of the surname relative to the first name. */
@@ -32,6 +39,7 @@ export interface TagParams {
 }
 
 export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
+  frontHeight: 20,
   sizeMm: 20,
   align: 'center',
   nudgeX: 0,
@@ -44,6 +52,8 @@ export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
 };
 
 export interface TagResult {
+  /** The em size actually used, after solving for `frontHeight`. */
+  emMm: number;
   polys: Poly[];
   mesh: Mesh;
   bridges: Bridge[];
@@ -65,14 +75,29 @@ export const buildTag = (font: opentype.Font, geom: Geom, params: TagParams): Ta
   const warnings: string[] = [];
   const substituted: string[] = [];
 
-  const lineOf = (text: string, idx: number) => {
+  const lineOf = (text: string, idx: number, em: number) => {
     const sub = substituteMissing(font, text);
     substituted.push(...sub.substituted);
-    return textToContours(font, sub.text, idx, { sizeMm: params.sizeMm, tolerance: params.flattenTol }, geom);
+    return textToContours(font, sub.text, idx, { sizeMm: em, tolerance: params.flattenTol }, geom);
   };
 
-  const top = lineOf(params.first, 0);
-  let bottom = lineOf(params.last, 1);
+  // Solve the em size so the front line's ink is exactly `frontHeight` tall.
+  // Outlines scale linearly with em, so one probe pass at a reference size is
+  // enough; rebuilding at the solved size keeps the flattening tolerance
+  // meaningful rather than 5x finer than needed.
+  let em = params.sizeMm;
+  if (params.frontHeight && params.frontHeight > 0) {
+    const REF = 100;
+    const probeText = params.last.trim() || params.first;
+    const probe = lineOf(probeText, 1, REF);
+    substituted.length = 0;
+    const pb = bboxOf(probe.map((c) => c.ring));
+    const h = pb.y1 - pb.y0;
+    if (h > 0) em = (REF * params.frontHeight) / h;
+  }
+
+  const top = lineOf(params.first, 0, em);
+  let bottom = lineOf(params.last, 1, em);
 
   if (top.length === 0 && bottom.length === 0) {
     throw new Error('nothing to draw');
@@ -112,6 +137,7 @@ export const buildTag = (font: opentype.Font, geom: Geom, params: TagParams): Ta
   const mesh = sweepTag(polys, params.sweep);
 
   return {
+    emMm: em,
     polys,
     mesh,
     bridges: solved.bridges,
