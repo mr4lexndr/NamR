@@ -109,6 +109,16 @@ src/geom/
 11. **Mesh.** Earcut caps plus a quad band per boundary edge. No 3D booleans.
    Checked watertight before export.
 
+### Orbiting
+
+The preview orbits in the readable face's own frame, not the world's. That
+face is tilted by the sweep angle, so orbiting about world-up merely rolls the
+name diagonally across the screen instead of walking around it — the writing
+never sits level and there is no way to get a side view. Building the basis
+from the face itself (baseline right, its own up, its normal out) makes a
+horizontal drag mean "look from the side" and keeps the name level throughout.
+Home is that face, a fraction off-axis so the depth reads.
+
 ### Print orientation
 
 The face you read is the one at the far end of the sweep, whose normal is

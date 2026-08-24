@@ -235,7 +235,7 @@ export const App = (): React.ReactElement => {
         {s.sizeMode === 'em' ? (
           <Slider label="Font size" unit="mm" min={6} max={60} step={0.5}
             value={s.sizeMm} onChange={(v) => num('sizeMm', v)}
-            hint="The number you type into Fusion's text Height field" />
+            hint="Type size. The lettering measures a little more, top of the ascenders to the bottom of the descenders." />
         ) : (
           <Slider label="Front height" unit="mm" min={8} max={60} step={0.5}
             value={s.frontHeight} onChange={(v) => num('frontHeight', v)}
@@ -316,7 +316,8 @@ export const App = (): React.ReactElement => {
       </aside>
 
       <main className="stage">
-        <Viewer positions={res?.positions ?? null} indices={res?.indices ?? null} />
+        <Viewer positions={res?.positions ?? null} indices={res?.indices ?? null}
+          sweepAngle={s.angleDeg} />
         {editing && res?.outline && (
           <Editor
             outline={res.outline}
