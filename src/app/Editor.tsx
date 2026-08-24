@@ -4,9 +4,11 @@ import type { Pt } from '../geom/types';
 
 interface Props {
   outline: number[][];
-  bridges: { a: Pt; b: Pt; width: number; kind: string; id?: string }[];
+  bridges: { a: Pt; b: Pt; width: number; kind: string; id: string }[];
   manual: Bridge[];
+  suppressed: string[];
   onManualChange: (next: Bridge[]) => void;
+  onSuppressedChange: (next: string[]) => void;
   /** Current surname offset, so dragging can nudge from where it is. */
   offset: { x: number; y: number };
   onOffsetChange: (next: { x: number; y: number }) => void;
@@ -23,10 +25,12 @@ const PAD = 6;
  * actually needs fixing when a tag comes out in two pieces.
  */
 export const Editor = ({
-  outline, bridges, manual, onManualChange, offset, onOffsetChange, onClose,
+  outline, bridges, manual, suppressed, onManualChange, onSuppressedChange,
+  offset, onOffsetChange, onClose,
 }: Props): React.ReactElement => {
   const [mode, setMode] = useState<Mode>('link');
   const [pending, setPending] = useState<Pt | null>(null);
+  const [grab, setGrab] = useState<{ id: string; a: Pt; b: Pt; end: 'a' | 'b' } | null>(null);
   const [hover, setHover] = useState<Pt | null>(null);
   const svg = useRef<SVGSVGElement>(null);
   const dragFrom = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -66,8 +70,21 @@ export const Editor = ({
     return `${d}Z`;
   };
 
+  /** Turn an automatic link into one of the user's own, at a new position. */
+  const rehome = (id: string, a: Pt, b: Pt): void => {
+    onManualChange([...manual.filter((m) => m.id !== id),
+      { id: id.startsWith('manual:') ? id : `manual:${id}`, a, b, width: 1.1, kind: 'manual' }]);
+    if (!id.startsWith('manual:') && !suppressed.includes(id)) onSuppressedChange([...suppressed, id]);
+  };
+
+  const remove = (id: string): void => {
+    if (id.startsWith('manual:')) onManualChange(manual.filter((m) => m.id !== id));
+    else if (!suppressed.includes(id)) onSuppressedChange([...suppressed, id]);
+  };
+
   const down = (e: React.PointerEvent): void => {
     const p = toModel(e);
+    if (grab) return;
     if (mode === 'move') {
       dragFrom.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -115,9 +132,9 @@ export const Editor = ({
             ? pending ? 'click the second point' : 'click two points to join them'
             : 'drag to reposition the second line'}
         </span>
-        {manual.length > 0 && (
-          <button className="link" onClick={() => onManualChange([])}>
-            clear {manual.length} manual link{manual.length === 1 ? '' : 's'}
+        {(manual.length > 0 || suppressed.length > 0) && (
+          <button className="link" onClick={() => { onManualChange([]); onSuppressedChange([]); }}>
+            reset {manual.length + suppressed.length} edit{manual.length + suppressed.length === 1 ? '' : 's'}
           </button>
         )}
         <button className="link" onClick={onClose}>done</button>
@@ -128,15 +145,40 @@ export const Editor = ({
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}>
         <path className="eshape" fillRule="evenodd" d={outline.map(path).join(' ')} />
 
-        {bridges.map((b, i) => (
-          <line key={b.id ?? i} className={`ebridge ${b.kind}`}
-            x1={b.a.x} y1={-b.a.y} x2={b.b.x} y2={-b.b.y}
-            strokeWidth={b.width}
-            onClick={() => {
-              if (b.kind !== 'manual') return;
-              onManualChange(manual.filter((m) => m.id !== b.id));
-            }} />
+        {bridges.map((b) => (
+          <g key={b.id}>
+            <line className={`ebridge ${b.kind}`}
+              x1={b.a.x} y1={-b.a.y} x2={b.b.x} y2={-b.b.y} strokeWidth={b.width} />
+            {/* fat invisible hit area: a 1mm line is unclickable */}
+            <line className="ehit"
+              x1={b.a.x} y1={-b.a.y} x2={b.b.x} y2={-b.b.y} strokeWidth={Math.max(b.width, 2.4)}
+              onClick={(e) => { e.stopPropagation(); remove(b.id); }} />
+            {(['a', 'b'] as const).map((end) => (
+              <circle key={end} className="ehandle" r={1.0}
+                cx={b[end].x} cy={-b[end].y}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                  setGrab({ id: b.id, a: b.a, b: b.b, end });
+                }}
+                onPointerMove={(e) => {
+                  if (grab?.id !== b.id) return;
+                  const p = toModel(e);
+                  setGrab({ ...grab, [grab.end]: p } as typeof grab);
+                }}
+                onPointerUp={(e) => {
+                  if (grab?.id !== b.id) return;
+                  e.stopPropagation();
+                  rehome(grab.id, grab.a, grab.b);
+                  setGrab(null);
+                }} />
+            ))}
+          </g>
         ))}
+
+        {grab && (
+          <line className="eghost" x1={grab.a.x} y1={-grab.a.y} x2={grab.b.x} y2={-grab.b.y} strokeWidth={1.1} />
+        )}
 
         {pending && <circle className="epending" cx={pending.x} cy={-pending.y} r={1.1} />}
         {pending && hover && (
@@ -147,7 +189,8 @@ export const Editor = ({
       <p className="elegend">
         <i className="sw stem" /> accent stems
         <i className="sw auto" /> automatic
-        <i className="sw manual" /> yours — click to remove
+        <i className="sw manual" /> yours
+        <span>click a link to remove it · drag its ends to move it</span>
       </p>
     </div>
   );

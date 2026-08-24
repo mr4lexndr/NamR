@@ -38,6 +38,7 @@ interface Settings {
   overlapY: number | null;
   nudgeX: number;
   manual: Bridge[];
+  suppressed: string[];
 }
 
 const INITIAL: Settings = {
@@ -56,6 +57,7 @@ const INITIAL: Settings = {
   overlapY: null,
   nudgeX: 0,
   manual: [],
+  suppressed: [],
 };
 
 const toParams = (s: Settings): TagParams => ({
@@ -67,6 +69,7 @@ const toParams = (s: Settings): TagParams => ({
   nudgeX: s.nudgeX,
   overlapY: s.overlapY ?? undefined,
   manualBridges: s.manual,
+  suppressedBridges: s.suppressed,
   connect: {
     ...DEFAULT_TAG.connect,
     weldRadius: s.weldRadius,
@@ -101,6 +104,8 @@ export const App = (): React.ReactElement => {
 
   const worker = useRef<Worker | null>(null);
   const nextId = useRef(1);
+  const inFlight = useRef(false);
+  const queued = useRef<TagParams | null>(null);
   const pending = useRef(new Map<number, { resolve: (r: BuildResponse) => void; onProgress?: (r: BuildResponse) => void }>());
   const fontReady = useRef(false);
 
@@ -166,20 +171,32 @@ export const App = (): React.ReactElement => {
     return () => { dead = true; };
   }, [pickBundled, loadFontBuffer]);
 
-  // Rebuild whenever settings change, coalescing bursts from slider drags.
   const params = useMemo(() => toParams(s), [s]);
+
+  /**
+   * One build in flight at a time, with only the newest request kept behind
+   * it. Debouncing alone still queued a build per slider tick, so a drag ran
+   * an ever-growing backlog and the preview fell further behind the cursor
+   * the longer you dragged.
+   */
+  const runBuild = useCallback(async (p: TagParams): Promise<void> => {
+    if (inFlight.current) { queued.current = p; return; }
+    inFlight.current = true;
+    setBusy(true);
+    const r = await send({ kind: 'build', params: p });
+    inFlight.current = false;
+    if (r.ok) { setRes(r); setErr(null); } else setErr(r.error ?? 'build failed');
+
+    const next = queued.current;
+    queued.current = null;
+    if (next) void runBuild(next);
+    else setBusy(false);
+  }, [send]);
+
   useEffect(() => {
     if (!fontReady.current) return;
-    let dead = false;
-    setBusy(true);
-    const t = setTimeout(async () => {
-      const r = await send({ kind: 'build', params });
-      if (dead) return;
-      if (r.ok) { setRes(r); setErr(null); } else setErr(r.error ?? 'build failed');
-      setBusy(false);
-    }, 90);
-    return () => { dead = true; clearTimeout(t); };
-  }, [params, send, fontName]);
+    void runBuild(params);
+  }, [params, runBuild, fontName]);
 
   const save = async (fmt: 'stl' | '3mf') => {
     setBusy(true);
@@ -323,13 +340,15 @@ export const App = (): React.ReactElement => {
             outline={res.outline}
             bridges={res.bridges ?? []}
             manual={s.manual}
+            suppressed={s.suppressed}
             onManualChange={(manual) => setS((p) => ({ ...p, manual }))}
+            onSuppressedChange={(suppressed) => setS((p) => ({ ...p, suppressed }))}
             offset={{ x: s.nudgeX, y: s.overlapY ?? info?.overlapY ?? 0 }}
             onOffsetChange={({ x, y }) => setS((p) => ({ ...p, nudgeX: x, overlapY: y }))}
             onClose={() => setEditing(false)}
           />
         )}
-        <div className="hud">
+        <div className="hud" hidden={editing}>
           {err && <div className="bad">{err}</div>}
           {info && (
             <>

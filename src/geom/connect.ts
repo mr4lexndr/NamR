@@ -168,7 +168,9 @@ export const markStems = (contours: Contour[], geom: Geom, opts: ConnectOptions)
       if (dist > opts.maxBridgeLength) continue;
       const ends = overshoot(a, b, opts.stemWidth * 0.6);
       bridges.push({
-        id: `stem:${key}:${bridges.length}`,
+        // Keyed by where it lands, not by discovery order, so removing one
+        // still refers to the same link after the tag is rebuilt.
+        id: `stem:${key}:${a.x.toFixed(1)},${a.y.toFixed(1)}`,
         a: ends.a,
         b: ends.b,
         width: opts.stemWidth,
@@ -223,7 +225,7 @@ export const bridgeIslands = (
     } else {
       const ends = overshoot(a, b, opts.bridgeWidth * 0.6);
       bridges.push({
-        id: `auto:${best.i}-${best.j}`,
+        id: `auto:${a.x.toFixed(1)},${a.y.toFixed(1)}`,
         a: ends.a,
         b: ends.b,
         width: opts.bridgeWidth,
@@ -421,7 +423,7 @@ export const linkLines = (
       if (!farEnough(mid)) continue;
       const ends = overshoot(c.a, c.b, opts.bridgeWidth * 0.6);
       bridges.push({
-        id: `link:${bridges.length}`,
+        id: `link:${c.a.x.toFixed(1)},${c.a.y.toFixed(1)}`,
         a: ends.a, b: ends.b,
         width: opts.bridgeWidth,
         kind: 'auto',
@@ -438,6 +440,90 @@ export const applyBridges = (polys: Poly[], bridges: Bridge[], geom: Geom): Poly
   const rings = ringsOf(polys);
   for (const br of bridges) rings.push(...ringsOf(geom.capsule(br.a, br.b, br.width)));
   return geom.union(rings);
+};
+
+/** How many separate places two lines touch with real width. */
+export const countWelds = (
+  top: Poly[],
+  bottom: Poly[],
+  geom: Geom,
+  minWidth: number,
+): number => {
+  const shared = intersect(top, bottom, geom);
+  if (shared.length === 0) return 0;
+  // Erode to discard tangential kisses, then count what is left standing.
+  return geom.offset(shared, -minWidth / 2).length;
+};
+
+export interface Placement2D {
+  dx: number;
+  dy: number;
+  welds: number;
+  score: number;
+}
+
+/**
+ * Find where the surname actually wants to sit.
+ *
+ * Sliding it straight up is the wrong single degree of freedom: two lines of
+ * script interlock at particular horizontal offsets, where a descender drops
+ * into the gap between two ascenders. Searching sideways as well as vertically
+ * finds those, and the pair then joins by overlapping the way the reference
+ * sketches do — several honest welds instead of one contact plus struts.
+ *
+ * The search runs on decimated outlines. It evaluates a few hundred
+ * placements, and at full resolution that would cost more than the rest of the
+ * pipeline put together; the answer is a millimetre-scale offset, so tenth-
+ * millimetre detail cannot change it.
+ */
+export const solveLinePlacement = (
+  top: Poly[],
+  bottom: Poly[],
+  geom: Geom,
+  opts: ConnectOptions,
+  simplify: (p: Poly[], tol: number) => Poly[],
+): Placement2D => {
+  const T = simplify(top, 0.25);
+  const B = simplify(bottom, 0.25);
+  const tb = bboxOf(ringsOf(T));
+  const bb = bboxOf(ringsOf(B));
+  const clear = tb.y0 - bb.y1;
+  const shorter = Math.min(tb.y1 - tb.y0, bb.y1 - bb.y0);
+  const maxTravel = shorter * opts.maxOverlapFraction;
+  const span = Math.min(tb.x1 - tb.x0, bb.x1 - bb.x0);
+
+  const shifted = (dx: number, dy: number): Poly[] => translate(B, dx, dy);
+
+  /** Shallowest overlap at this dx that welds at all, or null. */
+  const depthFor = (dx: number): number | null => {
+    let lo = clear, hi = clear + maxTravel;
+    if (countWelds(T, shifted(dx, hi), geom, opts.minWeldWidth) === 0) return null;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      if (countWelds(T, shifted(dx, mid), geom, opts.minWeldWidth) > 0) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  };
+
+  let best: Placement2D | null = null;
+  const reach = span * 0.18;
+  const steps = 9;
+
+  for (let i = 0; i <= steps; i++) {
+    const dx = -reach + (2 * reach * i) / steps;
+    const dy = depthFor(dx);
+    if (dy === null) continue;
+    // A little past first contact, so the welds have width to them.
+    const seated = dy + 0.4;
+    const welds = countWelds(T, shifted(dx, seated), geom, opts.minWeldWidth);
+    // Prefer real welds, then a shallow overlap, then staying near centre.
+    const score = -welds * 10 + (seated - clear) * 0.35 + Math.abs(dx) * 0.25;
+    if (!best || score < best.score) best = { dx, dy: seated, welds, score };
+  }
+
+  if (best) return best;
+  return { dx: 0, dy: clear + maxTravel, welds: 0, score: Infinity };
 };
 
 /**
@@ -506,9 +592,12 @@ export const connect = (
   geom: Geom,
   opts: ConnectOptions,
   manual: Bridge[] = [],
+  suppressed: string[] = [],
 ): ConnectResult => {
+  const dropped = new Set(suppressed);
+  const keep = (b: Bridge): boolean => !dropped.has(b.id);
   const warnings: string[] = [];
-  const stems = markStems(contours, geom, opts);
+  const stems = markStems(contours, geom, opts).filter(keep);
 
   const counters = glyphCounters(contours, geom, opts);
 
@@ -518,14 +607,17 @@ export const connect = (
 
   const top = geom.union(contours.filter((c) => c.line === 0).map((c) => c.ring));
   const bottom = geom.union(contours.filter((c) => c.line !== 0).map((c) => c.ring));
-  const { bridges: links, links: lineLinks } = linkLines(top, bottom, geom, opts);
+  const found = linkLines(top, bottom, geom, opts);
+  const links = found.bridges.filter(keep);
+  const lineLinks = found.links - (found.bridges.length - links.length);
   polys = applyBridges(polys, links, geom);
   if (lineLinks < opts.minLineLinks) {
     warnings.push(`the two lines meet in only ${lineLinks} place${lineLinks === 1 ? '' : 's'}`);
   }
 
-  const { bridges: auto, warnings: w } = bridgeIslands(polys, opts);
-  warnings.push(...w);
+  const first = bridgeIslands(polys, opts);
+  warnings.push(...first.warnings);
+  const auto = first.bridges.filter(keep);
   polys = applyBridges(polys, auto, geom);
 
   // Fillet the bridge junctions, then clear any background the welding
@@ -539,6 +631,8 @@ export const connect = (
   // whole. Filleting resolves the pinch and the piece falls in two. Checking
   // again here catches exactly that: a contact with no width was never a
   // connection worth counting.
+  // This pass ignores suppressions: the tag has to come out in one piece, so
+  // removing a link may move it rather than delete it outright.
   if (polys.length > 1) {
     const { bridges: extra, warnings: w2 } = bridgeIslands(polys, opts);
     warnings.push(...w2);
