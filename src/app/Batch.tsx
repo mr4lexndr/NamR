@@ -82,16 +82,19 @@ export const Batch = ({ params, send, ready }: Props): React.ReactElement => {
       </label>
 
       <p className="help">
-        <b>One guest per line.</b> First name, then surname. Separate the two with a
-        comma, semicolon, tab — or just a space.
+        <b>One guest per line.</b> First name, then surname — separated by a
+        space, comma, semicolon or tab.
       </p>
-      <pre className="sample">Teodor, Grzęda
-Witold Jóźwiak
-Felicja Ida;Kościelniak</pre>
+      <table className="sample">
+        <tbody>
+          <tr><td>Witold Jóźwiak</td><td>Witold · Jóźwiak</td></tr>
+          <tr><td>Teodor, Grzęda</td><td>Teodor · Grzęda</td></tr>
+          <tr><td>Felicja Ida;Kościelniak</td><td>Felicja Ida · Kościelniak</td></tr>
+        </tbody>
+      </table>
       <p className="help dimmer">
-        A CSV exported from Excel works as-is, header row and all. With a space,
-        the last word becomes the surname, so “Felicja Ida Kościelniak” splits as
-        you would expect.
+        A CSV straight out of Excel works as-is, header row and all. With a
+        plain space the last word becomes the surname.
       </p>
 
       <textarea ref={paste} className="paste" rows={4}

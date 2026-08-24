@@ -5,9 +5,16 @@ import { DEFAULT_TAG } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import type { BuildResponse, Request, RequestInit_ } from './worker';
 
+/** Open-licensed connected scripts, all verified for full Polish coverage. */
 const BUNDLED = [
-  { label: 'Yellowtail', file: 'Yellowtail-Regular.ttf' },
-  { label: 'Pacifico', file: 'Pacifico-Regular.ttf' },
+  { label: 'Yellowtail', file: 'Yellowtail-Regular.ttf', note: 'closest to Brush Script' },
+  { label: 'Pacifico', file: 'Pacifico-Regular.ttf', note: 'round, casual' },
+  { label: 'Lobster', file: 'Lobster-Regular.ttf', note: 'bold display' },
+  { label: 'Damion', file: 'Damion-Regular.ttf', note: 'brush, upright' },
+  { label: 'Norican', file: 'Norican-Regular.ttf', note: 'light brush' },
+  { label: 'Sacramento', file: 'Sacramento-Regular.ttf', note: 'fine, delicate' },
+  { label: 'Alex Brush', file: 'AlexBrush-Regular.ttf', note: 'fine calligraphic' },
+  { label: 'Great Vibes', file: 'GreatVibes-Regular.ttf', note: 'formal script' },
 ];
 
 type SizeMode = 'em' | 'front';
@@ -120,25 +127,22 @@ export const App = (): React.ReactElement => {
     setErr(null);
   }, [send]);
 
-  // Bundled default face.
+  const pickBundled = useCallback(async (file: string, label: string) => {
+    setBusy(true);
+    try {
+      const r = await fetch(`${import.meta.env.BASE_URL}fonts/${file}`);
+      if (!r.ok) throw new Error(`could not load ${label}`);
+      await loadFontBuffer(await r.arrayBuffer(), label);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }, [loadFontBuffer]);
+
   useEffect(() => {
     if (!worker.current) return;
-    let dead = false;
-    (async () => {
-      for (const f of BUNDLED) {
-        try {
-          const r = await fetch(`${import.meta.env.BASE_URL}fonts/${f.file}`);
-          if (!r.ok) continue;
-          const buf = await r.arrayBuffer();
-          if (dead) return;
-          await loadFontBuffer(buf, f.label);
-          return;
-        } catch { /* try the next one */ }
-      }
-      if (!dead) { setFontName('none'); setBusy(false); setErr('No bundled font found — drop a .ttf or .otf below.'); }
-    })();
-    return () => { dead = true; };
-  }, [loadFontBuffer]);
+    void pickBundled(BUNDLED[0]!.file, BUNDLED[0]!.label);
+  }, [pickBundled]);
 
   // Rebuild whenever settings change, coalescing bursts from slider drags.
   const params = useMemo(() => toParams(s), [s]);
@@ -248,11 +252,24 @@ export const App = (): React.ReactElement => {
         </>
         )}
 
-        <label className="fld top"><span>Font — {fontName}</span>
+        <label className="fld top"><span>Font</span>
+          <select value={BUNDLED.some((b) => b.label === fontName) ? fontName : ''}
+            onChange={(e) => {
+              const b = BUNDLED.find((q) => q.label === e.target.value);
+              if (b) void pickBundled(b.file, b.label);
+            }}>
+            {BUNDLED.map((b) => <option key={b.label} value={b.label}>{b.label} — {b.note}</option>)}
+            {!BUNDLED.some((b) => b.label === fontName) && <option value="">{fontName} (yours)</option>}
+          </select>
+        </label>
+        <label className="fld"><span>…or use your own</span>
           <input type="file" accept=".ttf,.otf,font/ttf,font/otf"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFont(f); }} />
         </label>
-        <p className="note">Your font and the names never leave this browser.</p>
+        <p className="note">
+          Fonts are read in your browser — nothing about your guests is uploaded.
+          If you own Brush Script MT, load it here.
+        </p>
       </aside>
 
       <main className="stage">
@@ -263,6 +280,9 @@ export const App = (): React.ReactElement => {
             <>
               <span className={info.components === 1 ? 'ok' : 'bad'}>
                 {info.components === 1 ? '1 connected piece' : `${info.components} separate pieces`}
+              </span>
+              <span className={info.lineLinks >= 2 ? 'ok' : 'warn'}>
+                {info.lineLinks} line link{info.lineLinks === 1 ? '' : 's'}
               </span>
               <span>{info.dx.toFixed(0)} × {info.dy.toFixed(0)} × {info.dz.toFixed(0)} mm</span>
               <span>{(info.triangles / 1000).toFixed(0)}K tris</span>

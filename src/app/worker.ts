@@ -56,6 +56,7 @@ export interface BuildResponse {
   mf?: Uint8Array;
   info?: {
     components: number;
+    lineLinks: number;
     warnings: string[];
     substituted: string[];
     emMm: number;
@@ -116,6 +117,7 @@ self.onmessage = async (ev: MessageEvent<Request>) => {
       bridges: r.bridges.map((b) => ({ a: b.a, b: b.b, width: b.width, kind: b.kind })),
       info: {
         components: r.components,
+        lineLinks: r.lineLinks,
         warnings: r.warnings,
         substituted: r.substituted,
         emMm: r.emMm,

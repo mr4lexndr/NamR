@@ -19,8 +19,14 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
   const scene = useRef<THREE.Scene | null>(null);
 
   // Spherical camera around `target`; panning slides the target.
+  // The alpha = 0 cap carries the readable text and sits at minimum z, so the
+  // camera belongs below and in front of the tag. Orbiting up and behind, the
+  // obvious-looking default, shows only the backs of the swept strokes.
+  const HOME_AZ = -0.5;
+  const HOME_EL = -0.6;
+
   const cam = useRef({
-    az: -0.62, el: 0.42, dist: 160,
+    az: HOME_AZ, el: HOME_EL, dist: 160,
     target: new THREE.Vector3(),
     home: 160,
     radius: 60,
@@ -132,8 +138,8 @@ export const Viewer = ({ positions, indices }: Props): React.ReactElement => {
     };
     const menu = (e: Event): void => e.preventDefault();
     const dbl = (): void => {
-      cam.current.az = -0.62;
-      cam.current.el = 0.42;
+      cam.current.az = HOME_AZ;
+      cam.current.el = HOME_EL;
       fitRef.current();
     };
 
