@@ -7,7 +7,7 @@ export const toStl = (mesh: Mesh, header = 'NamR'): Uint8Array => {
   const buf = new ArrayBuffer(84 + nTri * 50);
   const view = new DataView(buf);
   // Truncate after encoding: the header is a fixed 80 *bytes*, and a name
-  // like "Dabrowa" with diacritics encodes to more bytes than characters.
+  // with Polish diacritics encodes to more bytes than characters.
   const head = strToU8(header).slice(0, 80);
   new Uint8Array(buf, 0, 80).set(head);
   view.setUint32(80, nTri, true);

@@ -42,19 +42,35 @@ as **one connected solid**: no supports, no glue, no assembly.
 | Bed packing / batches | done |
 | Bridge editor | not started |
 
-Validated on 17 Polish names across all nine faces (153 combinations): every
-one resolves to a single watertight, correctly oriented component, held
-together on at least two different pairs of letters. 108 need no strut at all.
-
 Leaving the surname empty gives a one-line tag.
 
+`npm run check` builds 16 randomly generated Polish names and three one-line
+tags in every bundled face, plus Savoye LET and Brush Script where the
+machine has them. All
+190 come out as a single watertight, correctly oriented piece, and every
+two-line tag is held together on at least two different pairs of letters.
+
 ```
-ok   Bożena Dąbrowa           comp=1 br=3 56x32x30mm 41Ktri 1.95MB
-ok   Stanisław Żółtowski          comp=1 br=5 69x34x32mm 45Ktri 2.16MB
-ok   Mirosław Bieńkowski    comp=1 br=6 91x32x30mm 57Ktri 2.72MB
-...
-12/12 ok, 67ms/name
+face          pass   strut-free  longest strut
+AlexBrush     19/19  8/16        5.3mm
+Damion        19/19  11/16       6.8mm
+GreatVibes    19/19  12/16       2.8mm
+Lobster       19/19  14/16       1.7mm
+Norican       19/19  12/16       5.8mm
+Pacifico      19/19  14/16       3.2mm
+Sacramento    19/19  10/16       8.7mm
+Yellowtail    19/19  13/16       4.7mm
+SavoyeLET     19/19  10/16       3.2mm
+BrushScript   19/19  11/16       3.3mm
+
+190/190 pass · 115/160 two-line tags strut-free · 135ms/tag
 ```
+
+Whether the lines have been pushed so far into each other that the name stops
+reading is not scored: shared ink area misses a thin swash cutting through a
+bowl, and so does the share of each letter's footprint the other line covers.
+`npm run check -- --sheets` draws every tag flat into `out/check/` to be judged
+by eye.
 
 ## The geometry, confirmed
 
@@ -239,8 +255,10 @@ npm install
 npm run dev                           # the app, at localhost:5173/NamR/
 npm run build                         # production build into dist/
 
-npm run spike -- Bożena Dąbrowa     # headless: one tag -> out/tag.stl, .3mf
+npm run spike -- Bożena Dąbrowa       # headless: one tag -> out/tag.stl, .3mf
 FONT=/path/to/font.ttf npm run spike  # try another face
+npm run check                         # every face against the test names
+npm run check -- --sheets             # ...and draw them into out/check/
 ```
 
 Pushing to `main` deploys to GitHub Pages. Enable it once under

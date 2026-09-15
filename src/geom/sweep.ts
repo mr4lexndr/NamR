@@ -25,11 +25,12 @@ export interface SweepOptions {
 }
 
 /**
- * Confirmed against the reference STEP export: all 462 circles in that B-rep share a
- * single axis along X (parallel to the baseline) at a fixed line, radii run
- * 5.000 to 46.534, and max Z / max radius = sin(60 deg) exactly. So the tag is
- * a 60 deg revolve about an axis 5mm past the lowest ink, and the R50 in the
- * reference sketch is construction geometry that does not reach the solid.
+ * Confirmed against a STEP export of the original model: all 462 circles in
+ * that B-rep share a single axis along X (parallel to the baseline) at a fixed
+ * line, radii run 5.000 to 46.534, and max Z / max radius = sin(60 deg)
+ * exactly. So the tag is a 60 deg revolve about an axis 5mm past the lowest
+ * ink, and the R50 in the reference sketch is construction geometry that does
+ * not reach the solid.
  */
 export const DEFAULT_SWEEP: SweepOptions = {
   mode: 'revolve',
