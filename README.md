@@ -107,7 +107,7 @@ src/geom/
   export.ts     binary STL, 3MF, manifold check
   tag.ts        the whole pipeline for one tag
   csv.ts        guest list parsing, delimiter sniffing
-  pack.ts       maximal-rectangles packing onto printer beds
+  pack.ts       plate packing: maximal rectangles, best of many strategies
   batch.ts      many names -> plates -> zip + manifest
 ```
 
@@ -199,14 +199,19 @@ than assumed — Polish Excel writes semicolons — the BOM is stripped, a heade
 row is detected if present, and a single-column file is split on the last
 space so multi-part given names survive.
 
-Tags are packed longest-first, each on the earliest plate it fits, filling
-from the top-left. Name tags are long and shallow, so they settle into rows,
-and every row ends in a strip too narrow for another tag lying flat but deep
-enough, across two rows, for one turned a quarter. Tracking every free
-rectangle rather than a shelf finds those strips; turning is about Z, so the
-reading face stays on the glass. On random 82-name lists this averages 5.0
-plates on a 256mm bed where shelf packing needed 5.9, and 7 on a 220mm bed
-where it needed 8, with only the tags at the ends of rows turned.
+Tags are packed onto as few plates as possible. Every free rectangle on a
+plate is tracked, and a tag may be turned a quarter about Z, which keeps the
+reading face on the glass; that is what fills the strip left at the end of a
+row, too narrow for another tag lying flat but deep enough across two rows for
+a turned one. No single ordering or placement rule wins on every list, so all
+twenty combinations are tried, then a few hundred seeded shuffles, and the
+result with the fewest plates and the fullest early ones is kept. The same
+list always packs the same way.
+
+On random 40–150 name lists that averages 4.75 plates on a 256mm bed, against
+5.17 for one fixed rule and a floor of 4.33 set by the tags' area alone; 82
+tags usually land on exactly the number of plates their area requires. It
+takes well under a second, next to the seconds spent building the tags.
 
 The download is a zip of either one file per plate or one per tag, plus a
 `manifest.csv` naming every tag, its plate and any warning.
