@@ -33,8 +33,10 @@ export interface ConnectOptions {
    * open space is the fallback when the gap is too wide to close by hand.
    */
   letterTighten: number;
-  /** Tightening never closes a gap into a hole smaller than this, in mm² at a 20mm em. */
-  minEyeArea: number;
+  /** How far around a join's stroke ends counts as the join, mm at a 20mm em. */
+  joinRadius: number;
+  /** How much further a join near the baseline may be than the nearest approach and still be preferred, mm at a 20mm em. */
+  joinSlack: number;
   /**
    * Rounds the concave corners where a bridge meets a stroke, so a connector
    * flows into the letter instead of butting against it. Applied after
@@ -60,7 +62,8 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   minLineLinks: 2,
   linkSeparation: 14,
   letterTighten: 1.2,
-  minEyeArea: 4,
+  joinRadius: 2,
+  joinSlack: 2,
   filletRadius: 0.25,
   minHoleArea: 1,
 };
@@ -191,6 +194,8 @@ export const markStems = (contours: Contour[], geom: Geom, opts: ConnectOptions)
 export const bridgeIslands = (
   polys: Poly[],
   opts: ConnectOptions,
+  prefix = 'auto',
+  pairOf: (a: Poly[], b: Poly[]) => { a: Pt; b: Pt; dist: number } = closestPair,
 ): { bridges: Bridge[]; warnings: string[] } => {
   const bridges: Bridge[] = [];
   const warnings: string[] = [];
@@ -200,7 +205,7 @@ export const bridgeIslands = (
   const pair: { a: Pt; b: Pt; dist: number }[][] = Array.from({ length: n }, () => []);
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      if (i < j) pair[i]![j] = closestPair([polys[i]!], [polys[j]!]);
+      if (i < j) pair[i]![j] = pairOf([polys[i]!], [polys[j]!]);
     }
   }
   const between = (i: number, j: number) => (i < j ? pair[i]![j]! : pair[j]![i]!);
@@ -225,7 +230,7 @@ export const bridgeIslands = (
     } else {
       const ends = overshoot(a, b, opts.bridgeWidth * 0.6);
       bridges.push({
-        id: `auto:${a.x.toFixed(1)},${a.y.toFixed(1)}`,
+        id: `${prefix}:${a.x.toFixed(1)},${a.y.toFixed(1)}`,
         a: ends.a,
         b: ends.b,
         width: opts.bridgeWidth,
@@ -238,13 +243,51 @@ export const bridgeIslands = (
 };
 
 /**
- * Pull letters towards their neighbours until they touch.
+ * The height where script letters join, in line coordinates with the
+ * baseline at y = 0: from a little below the baseline to half the x-height.
+ */
+export interface Band { y0: number; y1: number }
+
+const strip = (band: Band): Poly[] =>
+  [{ outer: [{ x: -1e4, y: band.y0 }, { x: 1e4, y: band.y0 }, { x: 1e4, y: band.y1 }, { x: -1e4, y: band.y1 }], holes: [] }];
+
+const disk = (c: Pt, r: number): Poly[] =>
+  [{ outer: Array.from({ length: 24 }, (_, k) => ({ x: c.x + r * Math.cos((k * Math.PI) / 12), y: c.y + r * Math.sin((k * Math.PI) / 12) })), holes: [] }];
+
+/**
+ * Where two neighbouring letters are meant to join: the ends of the exit and
+ * entry strokes, found as the nearest approach at the font's own spacing.
+ * Near the baseline if there is a join there not much further off, since on a
+ * face like Savoye LET the top of an M's last hump sits nearer the next letter
+ * than the stroke that actually leads into it.
+ */
+const joinTips = (A: Poly[], B: Poly[], geom: Geom, band: Band, slack: number): { a: Pt; b: Pt; dist: number } => {
+  const nearest = closestPair(A, B);
+  if (nearest.dist < 0.01) return nearest;
+  const low = strip(band);
+  const lowA = intersect(A, low, geom), lowB = intersect(B, low, geom);
+  if (lowA.length === 0 || lowB.length === 0) return nearest;
+  const inBand = closestPair(lowA, lowB);
+  return inBand.dist <= nearest.dist + slack ? inBand : nearest;
+};
+
+/**
+ * Pull letters towards their neighbours until their strokes join.
  *
  * A script is meant to join up, so a gap between two letters is better closed
  * by tightening the spacing than by bridging across it: the result reads as
  * handwriting rather than as two letters wired together. Each letter may only
  * travel `letterTighten`, and anything still apart after that is left to the
  * bridging pass.
+ *
+ * It closes the gap between the stroke ends meant to meet, not between
+ * whichever points happen to be nearest, and only while the rest of both
+ * letters stays clear of the weld. Pulled together by nearest points, the
+ * letters of a face drawn apart meet at a shoulder or a bowl — an r fused into
+ * the d before it — and trap specks of background that print as blobs. And it
+ * stops at contact, leaving the join its width from the weld: pulling further
+ * makes strokes that meet at a shallow angle cross, and the lens between the
+ * crossings prints as a slit through the stroke.
  *
  * Shifts accumulate rightwards, so closing an early gap carries the rest of
  * the word with it and the spacing stays even.
@@ -253,6 +296,7 @@ export const tightenLine = (
   contours: Contour[],
   geom: Geom,
   opts: ConnectOptions,
+  band: Band,
 ): Contour[] => {
   if (opts.letterTighten <= 0 || contours.length === 0) return contours;
 
@@ -268,29 +312,29 @@ export const tightenLine = (
     const at = (d: number): Ring[] => rings.map((r) => r.map((p) => ({ x: p.x + d, y: p.y })));
     const islandsWith = (d: number): number =>
       geom.union([...placed.flatMap((p) => [p.outer, ...p.holes]), ...at(d)]).length;
-    // Holes too small to read as a space, once the weld has sealed them. On a
-    // face drawn with its letters apart, pulling each one into its neighbour
-    // traps specks of background between them, and the word prints as fused
-    // blobs. Such a join is left to the weld or a short link instead.
-    const specksWith = (d: number): number =>
-      geom.close(geom.union([...placed.flatMap((p) => [p.outer, ...p.holes]), ...at(d)]), opts.weldRadius)
-        .reduce((n, p) => n + p.holes.filter((h) => Math.abs(ringArea(h)) < opts.minEyeArea).length, 0);
 
     let dx = carry;
     if (placed.length > 0) {
       const before = islandsWith(carry);
+      const tips = joinTips(placed, geom.union(at(carry)), geom, band, opts.joinSlack);
+      const zoneA = disk(tips.a, opts.joinRadius);
       let budget = opts.letterTighten;
       // A few short steps rather than one guess: the gap is rarely horizontal,
       // so moving by its width does not close it in one go.
-      // Stop at contact and let the weld give the join its width. Pulling past
-      // it makes two strokes meeting at a shallow angle cross, and the thin
-      // lens between the crossings prints as a slit through the stroke.
-      const specksBefore = specksWith(dx);
-      for (let i = 0; i < 5 && budget > 0.01; i++) {
-        const { dist } = closestPair(placed, geom.union(at(dx)));
-        if (dist < 0.01) break;
-        const step = Math.min(dist, budget);
-        if (specksWith(dx - step) > specksBefore) break;
+      for (let i = 0; i < 5 && budget > 0.01 && tips.dist >= 0.01; i++) {
+        const glyph = geom.union(at(dx));
+        const zoneB = disk({ x: tips.b.x + dx - carry, y: tips.b.y }, opts.joinRadius);
+        const endA = intersect(placed, zoneA, geom), endB = intersect(glyph, zoneB, geom);
+        if (endA.length === 0 || endB.length === 0) break;
+        const gap = closestPair(endA, endB).dist;
+        if (gap < 0.01) break;
+        const restA = geom.difference(placed, zoneA), restB = geom.difference(glyph, zoneB);
+        const clearance = Math.min(
+          restA.length ? closestPair(restA, glyph).dist : Infinity,
+          restB.length ? closestPair(placed, restB).dist : Infinity,
+        ) - 2 * opts.weldRadius - 0.1;
+        const step = Math.min(gap, clearance, budget);
+        if (step <= 0.01) break;
         dx -= step;
         budget -= step;
       }
@@ -523,9 +567,9 @@ export interface Placement2D {
  * millimetre detail cannot change it.
  *
  * `linkCost` prices what the rest of the pipeline will still add to tie the
- * lines on two letter pairs. It is too slow to run on every placement, so the
- * few best by the cheap score are re-ranked with it: without that the search
- * happily settles on one weld and leaves a long strut to some distant letter.
+ * lines on two letter pairs. It is too slow to run on every placement, so a
+ * shortlist is re-ranked with it: without that the search happily settles on
+ * one weld and leaves a long strut to some distant letter.
  */
 export const solveLinePlacement = (
   top: Poly[],
@@ -610,15 +654,22 @@ export const solveLinePlacement = (
     return { score: cheap + strutLength(P, dx, dy), welds };
   };
 
+  // The shortlist for re-ranking: the best few overall, plus the best at each
+  // depth. By the cheap score the leaders are all shallow placements that need
+  // long links; a deeper one that welds on its own only wins once its links
+  // are costed, so it has to be on the list to be costed at all.
   const SHORTLIST = 5;
   let ranked: Placement2D[] = [];
-  const consider = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): void => {
-    const ceiling = ranked.length < SHORTLIST ? Infinity : ranked.at(-1)!.score;
+  const bestAtDepth = new Map<number, Placement2D>();
+  const consider = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number, depth?: number): void => {
+    const shortlistBar = ranked.length < SHORTLIST ? Infinity : ranked.at(-1)!.score;
+    const depthBar = depth === undefined ? -Infinity : (bestAtDepth.get(depth)?.score ?? Infinity);
+    const ceiling = Math.max(shortlistBar, depthBar);
     const r = cost(P, dx, dy, ceiling);
     if (r.score >= ceiling) return;
-    ranked = [...ranked, { dx, dy, welds: r.welds, score: r.score }]
-      .sort((a, b) => a.score - b.score)
-      .slice(0, SHORTLIST);
+    const c = { dx, dy, welds: r.welds, score: r.score };
+    if (depth !== undefined && r.score < depthBar) bestAtDepth.set(depth, c);
+    if (r.score < shortlistBar) ranked = [...ranked, c].sort((a, b) => a.score - b.score).slice(0, SHORTLIST);
   };
 
   // Coarse sweep of both axes on heavily decimated outlines. Depth is stepped
@@ -629,7 +680,7 @@ export const solveLinePlacement = (
   for (let i = 0; i <= DX; i++) {
     const dx = -reach + (2 * reach * i) / DX;
     for (let j = 1; j <= DY; j++) {
-      consider(coarse, dx, clear + (maxTravel * j) / DY);
+      consider(coarse, dx, clear + (maxTravel * j) / DY, j);
     }
   }
   if (ranked.length === 0) return { dx: 0, dy: clear + maxTravel, welds: 0, score: Infinity };
@@ -649,7 +700,7 @@ export const solveLinePlacement = (
   if (!linkCost) return ranked[0]!;
 
   let pick = ranked[0]!, pickTotal = Infinity;
-  for (const c of ranked) {
+  for (const c of [...ranked, ...bestAtDepth.values()]) {
     const total = c.score + linkCost(c.dx, c.dy);
     if (total < pickTotal) { pickTotal = total; pick = c; }
   }
@@ -671,12 +722,59 @@ const intersect = (a: Poly[], b: Poly[], geom: Geom): Poly[] => {
   return geom.difference(a, geom.difference(a, b));
 };
 
+/** One line of the name, joined into a single piece on its own. */
+export interface LinePiece {
+  contours: Contour[];
+  polys: Poly[];
+  bridges: Bridge[];
+}
+
 /**
- * Full 2D solve for one tag: weld near-misses, stem the accents, then bridge
- * whatever islands are left.
+ * Join one line into a single piece: stem the accents, weld near-misses, then
+ * bridge whatever letters are still apart.
+ *
+ * Each line is finished before the two are placed together. Solving both at
+ * once let a letter be held on only through the other line, so either name
+ * on its own would fall apart.
  */
-export const connect = (
+export const connectLine = (
   contours: Contour[],
+  geom: Geom,
+  opts: ConnectOptions,
+  band: Band,
+  suppressed: string[] = [],
+): LinePiece => {
+  if (contours.length === 0) return { contours, polys: [], bridges: [] };
+  const dropped = new Set(suppressed);
+  const stems = markStems(contours, geom, opts).filter((b) => !dropped.has(b.id));
+  let polys = geom.union(contours.map((c) => c.ring));
+  polys = applyBridges(polys, stems, geom);
+  polys = geom.close(polys, opts.weldRadius);
+  // A letter still apart is linked where its strokes were meant to join, the
+  // same place tightening aimed for, so the link continues the script. Ids are
+  // in the line's own coordinates, so an edit still finds its link after the
+  // surname has been moved.
+  const joins = bridgeIslands(
+    polys, opts, `join:${contours[0]!.line}`,
+    (a, b) => joinTips(a, b, geom, band, opts.joinSlack),
+  ).bridges.filter((b) => !dropped.has(b.id));
+  return { contours, polys: applyBridges(polys, joins, geom), bridges: [...stems, ...joins] };
+};
+
+export const translatePiece = (piece: LinePiece, dx: number, dy: number): LinePiece => ({
+  contours: translateContours(piece.contours, dx, dy),
+  polys: translate(piece.polys, dx, dy),
+  bridges: piece.bridges.map((b) => ({
+    ...b, a: { x: b.a.x + dx, y: b.a.y + dy }, b: { x: b.b.x + dx, y: b.b.y + dy },
+  })),
+});
+
+/**
+ * Put the finished lines together: tie them on two letter pairs, add the
+ * user's own links, and make sure what comes out is one printable piece.
+ */
+export const assemble = (
+  pieces: LinePiece[],
   geom: Geom,
   opts: ConnectOptions,
   manual: Bridge[] = [],
@@ -685,29 +783,25 @@ export const connect = (
   const dropped = new Set(suppressed);
   const keep = (b: Bridge): boolean => !dropped.has(b.id);
   const warnings: string[] = [];
-  const stems = markStems(contours, geom, opts).filter(keep);
   // A link placed or moved by hand follows the connector width in force now,
   // not whatever it was when the link was made.
   const own = manual.map((b) => ({ ...b, width: opts.bridgeWidth }));
+  const counters = glyphCounters(pieces.flatMap((p) => p.contours), geom, opts);
 
-  const counters = glyphCounters(contours, geom, opts);
-
-  let polys = geom.union(contours.map((c) => c.ring));
-  polys = applyBridges(polys, [...stems, ...own], geom);
+  let polys = geom.union(pieces.flatMap((p) => ringsOf(p.polys)));
+  polys = applyBridges(polys, own, geom);
   polys = geom.close(polys, opts.weldRadius);
 
-  const found = linkLines(
-    contours.filter((c) => c.line === 0),
-    contours.filter((c) => c.line !== 0),
-    geom,
-    opts,
-  );
-  const links = found.bridges.filter(keep);
-  const lineLinks = found.links - (found.bridges.length - links.length);
-  polys = applyBridges(polys, links, geom);
-  const twoLines = contours.some((c) => c.line === 0) && contours.some((c) => c.line !== 0);
-  if (twoLines && lineLinks < opts.minLineLinks) {
-    warnings.push(`the two lines meet in only ${lineLinks} place${lineLinks === 1 ? '' : 's'}`);
+  let links: Bridge[] = [];
+  let lineLinks = 0;
+  if (pieces.length === 2) {
+    const found = linkLines(pieces[0]!.contours, pieces[1]!.contours, geom, opts);
+    links = found.bridges.filter(keep);
+    lineLinks = found.links - (found.bridges.length - links.length);
+    polys = applyBridges(polys, links, geom);
+    if (lineLinks < opts.minLineLinks) {
+      warnings.push(`the two lines meet in only ${lineLinks} place${lineLinks === 1 ? '' : 's'}`);
+    }
   }
 
   const first = bridgeIslands(polys, opts);
@@ -738,5 +832,11 @@ export const connect = (
   const components = polys.length;
   if (components > 1) warnings.push(`${components} separate pieces remain`);
 
-  return { polys, bridges: [...stems, ...own, ...links, ...auto], components, lineLinks, warnings };
+  return {
+    polys,
+    bridges: [...pieces.flatMap((p) => p.bridges), ...own, ...links, ...auto],
+    components,
+    lineLinks,
+    warnings,
+  };
 };

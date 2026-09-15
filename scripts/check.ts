@@ -39,6 +39,7 @@ const SINGLE = ['Ula', 'Bożena', 'Władysław'];
 
 /** A strut this long reads as a wire across the name rather than part of the script. */
 const LONG_STRUT_MM = 5;
+const SHORT_LINK_MM = 2;
 
 /** The faces the app reads from the visitor's computer, where this machine has them. */
 const SYSTEM_FONTS: [string, string][] = [
@@ -87,11 +88,11 @@ const gridLayers = (cells: Cell[]): SvgLayer[] => {
 };
 
 const geom = await Geom.load();
-let tags = 0, failed = 0, strutFree = 0, ms = 0;
+let tags = 0, failed = 0, shortOnly = 0, ms = 0;
 const listed: string[] = [];
 if (sheets) mkdirSync('out/check', { recursive: true });
 
-console.log('face          pass   strut-free  longest strut');
+console.log('face          pass   short-link longest link');
 for (const [path, label] of fonts) {
   if (only && label !== only) continue;
   const { font } = loadFont(readFileSync(path).buffer.slice(0) as ArrayBuffer);
@@ -118,7 +119,9 @@ for (const [path, label] of fonts) {
       listed.push(`  ${fails.length ? 'FAIL' : 'look'} ${label.padEnd(12)} ${name.padEnd(24)} ${[...fails, ...notes].join(', ')}`);
     }
     if (twoLines) {
-      if (!s.length) { clean++; strutFree++; }
+      // A join of a millimetre or two reads as part of the stroke; past that it
+      // reads as something added.
+      if (worst <= SHORT_LINK_MM) { clean++; shortOnly++; }
       longest = Math.max(longest, worst);
     }
     if (sheets) {
@@ -145,7 +148,7 @@ for (const [path, label] of fonts) {
 
 const twoLine = NAMES.length * (only ? 1 : fonts.length);
 console.log(
-  `\n${tags - failed}/${tags} pass · ${strutFree}/${twoLine} two-line tags strut-free · ` +
+  `\n${tags - failed}/${tags} pass · ${shortOnly}/${twoLine} two-line tags with every link ≤${SHORT_LINK_MM}mm · ` +
   `${(ms / twoLine).toFixed(0)}ms/tag`,
 );
 if (listed.length) console.log(`\n${listed.join('\n')}`);

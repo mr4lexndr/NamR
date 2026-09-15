@@ -4,8 +4,10 @@ import { bboxOf } from './types';
 import type { Geom } from './clipper';
 import { embolden, substituteMissing, textToContours } from './text';
 import type { Bridge, ConnectOptions } from './connect';
+import type { Band, LinePiece } from './connect';
 import {
-  DEFAULT_CONNECT, connect, linkLines, solveLinePlacement, tightenLine, translateContours,
+  DEFAULT_CONNECT, assemble, connectLine, linkLines, solveLinePlacement, tightenLine,
+  translateContours, translatePiece,
 } from './connect';
 import type { Mesh, SweepOptions } from './sweep';
 import { DEFAULT_SWEEP, meshBounds, sweepTag } from './sweep';
@@ -99,16 +101,26 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   const conn = {
     ...params.connect,
     letterTighten: params.connect.letterTighten * k,
-    minEyeArea: params.connect.minEyeArea * k * k,
+    joinRadius: params.connect.joinRadius * k,
+    joinSlack: params.connect.joinSlack * k,
     minHoleArea: params.connect.minHoleArea * k * k,
   };
 
-  // Close the gaps inside each line before the lines are positioned, so the
-  // overlap search sees the shapes it will actually have to weld.
-  const top = tightenLine(lineOf(params.first, 0), geom, conn);
-  let bottom = tightenLine(lineOf(params.last, 1), geom, conn);
+  // Where script letters join: from a little below the baseline, lower still
+  // for thickened strokes, up to half the x-height.
+  const x = font.charToGlyph('x');
+  const xHeight = (x.index ? x.getBoundingBox().y2 : font.unitsPerEm / 2) * em / font.unitsPerEm;
+  const band: Band = { y0: -0.25 * xHeight - params.weight, y1: 0.5 * xHeight };
 
-  if (top.length === 0 && bottom.length === 0) {
+  // Each line is tightened and joined into one piece on its own before the
+  // two are placed, so no letter is held on only through the other line.
+  const lineAt = (text: string, idx: number): LinePiece =>
+    connectLine(tightenLine(lineOf(text, idx), geom, conn, band), geom, conn, band, params.suppressedBridges);
+  const top = lineAt(params.first, 0);
+  let bottom = lineAt(params.last, 1);
+  const twoLines = top.contours.length > 0 && bottom.contours.length > 0;
+
+  if (top.contours.length === 0 && bottom.contours.length === 0) {
     throw new Error('nothing to draw');
   }
 
@@ -116,49 +128,45 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   let offsetX = params.nudgeX;
   let naturalWelds = 0;
 
-  if (top.length > 0 && bottom.length > 0) {
-    const bt = bboxOf(top.map((c) => c.ring));
-    const bb = bboxOf(bottom.map((c) => c.ring));
+  if (twoLines) {
+    const bt = bboxOf(top.contours.map((c) => c.ring));
+    const bb = bboxOf(bottom.contours.map((c) => c.ring));
     const align =
       params.align === 'left' ? bt.x0 - bb.x0
       : params.align === 'right' ? bt.x1 - bb.x1
       : (bt.x0 + bt.x1) / 2 - (bb.x0 + bb.x1) / 2;
-    bottom = translateContours(bottom, align, 0);
+    bottom = translatePiece(bottom, align, 0);
 
     if (params.overlapY === undefined) {
       // The links that would really be added to tie the lines on two letter
       // pairs, each costing more steeply the longer it runs: a short one reads
-      // as part of the script, a long one as a wire across the name.
+      // as part of the script, a long one as a wire across the name. A second
+      // pair out of reach altogether makes a placement broken, not cheap: the
+      // tag would hinge on a single join.
       const thin = (cs: Contour[]): Contour[] =>
         cs.map((c) => ({ ...c, ring: simplifyRing(c.ring, 0.2) })).filter((c) => c.ring.length > 2);
-      const topThin = thin(top), bottomThin = thin(bottom);
-      const linkCost = (dx: number, dy: number): number =>
-        linkLines(topThin, translateContours(bottomThin, dx, dy), geom, conn).bridges
+      const topThin = thin(top.contours), bottomThin = thin(bottom.contours);
+      const linkCost = (dx: number, dy: number): number => {
+        const found = linkLines(topThin, translateContours(bottomThin, dx, dy), geom, conn);
+        return Math.max(0, conn.minLineLinks - found.links) * 200 + found.bridges
           .map((b) => Math.hypot(b.a.x - b.b.x, b.a.y - b.b.y))
           .reduce((sum, len) => sum + len * 1.5 + Math.max(0, len - 2.5) ** 2 * 3, 0);
+      };
 
-      const spot = solveLinePlacement(
-        geom.union(top.map((c) => c.ring)),
-        geom.union(bottom.map((c) => c.ring)),
-        geom,
-        conn,
-        simplifyPolys,
-        linkCost,
-      );
+      const spot = solveLinePlacement(top.polys, bottom.polys, geom, conn, simplifyPolys, linkCost);
       overlapY = spot.dy;
       offsetX = spot.dx + params.nudgeX;
       naturalWelds = spot.welds;
     }
-    bottom = translateContours(bottom, offsetX, overlapY);
+    bottom = translatePiece(bottom, offsetX, overlapY);
   }
 
-  const solved = connect([...top, ...bottom], geom, conn, params.manualBridges, params.suppressedBridges);
+  const pieces = [top, bottom].filter((p) => p.contours.length > 0);
+  const solved = assemble(pieces, geom, conn, params.manualBridges, params.suppressedBridges);
   warnings.push(...solved.warnings);
   // Only worth mentioning if bridging did not rescue it: the lines not
   // touching on their own is normal on a light face.
-  // Line warnings are meaningless with only one line to place.
-  if (top.length > 0 && bottom.length > 0
-      && naturalWelds === 0 && solved.lineLinks < conn.minLineLinks) {
+  if (twoLines && naturalWelds === 0 && solved.lineLinks < conn.minLineLinks) {
     warnings.push('the lines do not overlap; try a deeper line overlap');
   }
 
@@ -170,7 +178,7 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   const mesh = sweepTag(polys, params.sweep);
 
   const pb = bboxOf(polys.flatMap((p) => [p.outer, ...p.holes]));
-  const fb = bottom.length ? bboxOf(bottom.map((c) => c.ring)) : pb;
+  const fb = bottom.contours.length ? bboxOf(bottom.contours.map((c) => c.ring)) : pb;
 
   return {
     emMm: em,

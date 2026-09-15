@@ -48,22 +48,23 @@ Leaving the surname empty gives a one-line tag.
 tags in every bundled face, plus Savoye LET and Brush Script where the
 machine has them. All 190 come out as a single watertight, correctly oriented
 piece, and every two-line tag is held together on at least two different pairs
-of letters.
+of letters. *Short-link* counts tags whose every added link is 2mm or less,
+the length that reads as part of a stroke.
 
 ```
-face          pass   strut-free  longest strut
-AlexBrush     19/19  5/16        4.3mm
-Damion        19/19  12/16       5.7mm
-GreatVibes    19/19  7/16        5.8mm
-Lobster       19/19  12/16       5.8mm
-Norican       19/19  15/16       1.4mm
-Pacifico      19/19  13/16       4.2mm
-Sacramento    19/19  10/16       8.8mm
-Yellowtail    19/19  14/16       3.5mm
-SavoyeLET     19/19  8/16        3.1mm
-BrushScript   19/19  13/16       2.1mm
+face          pass   short-link longest link
+AlexBrush     19/19  5/16        3.6mm
+Damion        19/19  4/16        5.8mm
+GreatVibes    19/19  3/16        5.4mm
+Lobster       19/19  7/16        4.3mm
+Norican       19/19  10/16       3.5mm
+Pacifico      19/19  5/16        3.6mm
+Sacramento    19/19  6/16        4.4mm
+Yellowtail    19/19  3/16        3.9mm
+SavoyeLET     19/19  0/16        4.1mm
+BrushScript   19/19  8/16        3.9mm
 
-190/190 pass · 109/160 two-line tags strut-free · 341ms/tag
+190/190 pass · 51/160 two-line tags with every link ≤2mm · 191ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
@@ -121,19 +122,25 @@ src/geom/
 3. **Stems.** Each mark is tied to *its own* letter. Proximity alone would
    graft an `i` tittle onto whichever letter happens to be nearest, which on a
    tight script is often the wrong one.
-4. **Tightening.** A script is meant to join up, so a gap between letters is
-   closed by pulling them together rather than bridging across it — the result
-   reads as handwriting instead of two letters wired together. Each letter may
-   travel `letterTighten`; anything still apart is left to bridging. It stops
-   at contact and leaves the join to the weld: pulling further makes strokes
-   that meet at a shallow angle cross, and the lens between the crossings
-   prints as a slit through the stroke. Nor does it close a gap into a hole
-   smaller than 4mm² once welded: on a face drawn with its letters apart,
-   Savoye LET say, pulling each letter into its neighbour trapped specks of
-   background and the word printed as fused blobs, so that join is left to the
-   weld or a short link. A shift is rejected if it pushes a letter into a
-   neighbour's counter, and the finished word is compared against the
-   untightened one, so it can never make things worse.
+4. **Each line, joined on its own.** A script is meant to join up, so a gap
+   between letters is closed by pulling them together rather than bridging
+   across it — the result reads as handwriting instead of two letters wired
+   together. Each letter may travel `letterTighten`.
+
+   It closes the gap between the stroke ends meant to meet, not between
+   whichever points happen to be nearest. That is the nearest approach at the
+   font's own spacing, preferring one near the baseline if it is not much
+   further off, and the pull stops while the rest of both letters is still
+   clear of the weld. Pulled together by nearest points, Savoye LET's r met the
+   d before it at the shoulder and fused there, and the letters trapped specks
+   that printed as blobs. It also stops at contact and leaves the join its
+   width from the weld: pulling further makes strokes meeting at a shallow
+   angle cross, and the lens between the crossings prints as a slit.
+
+   Accents are stemmed, near-misses welded, and any letter still apart is
+   linked at those same stroke ends, so the link continues the script. Only
+   then is the line placed. Solving both lines at once let a letter be held on
+   only through the other line, so either name on its own fell apart.
 5. **Line placement.** Sliding the surname straight up is the wrong single
    degree of freedom: two lines of script interlock at particular horizontal
    offsets, where a descender drops into the gap between two ascenders. Depth
@@ -148,18 +155,18 @@ src/geom/
    until a first name's letters sat inside the surname's, which bold strokes
    then fused into solid fills. A short strut is cheap next to that.
 
-   Struts are costed twice. The minimum spanning tree over whatever islands
-   remain prices keeping the tag in one piece. And the lines must be tied on
-   two different letter pairs, because one contact is a hinge that snaps: the
-   five best placements are re-ranked by the links that step would really add,
-   each costing more steeply past 2.5mm. Without that the search settled on a
+   The two finished lines must be tied on two different letter pairs, because
+   one contact is a hinge that snaps. A shortlist — the five best placements
+   and the best at each depth — is re-ranked by the links that step would
+   really add, each costing more steeply past 2.5mm, and a second pair out of
+   reach costs as much as a broken tag. Without that the search settled on a
    single weld and left a long diagonal strut to some distant letter.
 
    A coarse sweep of both axes on heavily decimated outlines, then a local
    refinement around each of the leaders at finer resolution.
 6. **Closing.** Morphological closing (dilate then erode by `weldRadius`)
    welds gaps up to `2 × weldRadius` without fattening the letterforms.
-7. **Bridging.** Islands that survive are joined by a minimum spanning tree
+7. **Bridging.** Anything that survives is joined by a minimum spanning tree
    over inter-island distance: n islands need exactly n−1 bridges, each placed
    where the letters already almost touch. A second pass runs after filleting,
    because two strokes meeting at a single point come back from the union as
