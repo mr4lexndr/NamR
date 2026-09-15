@@ -155,6 +155,12 @@ export const textToContours = (
  * Split one glyph's rings into base and mark. A glyph whose rings form more
  * than one island -- i and its tittle, n and its acute, a and its ogonek --
  * yields marks for every island but the largest.
+ *
+ * Every glyph comes back as the union's rings, single islands included, so
+ * all of them share one winding. Fonts wind outlines either way round --
+ * TrueType ink runs clockwise -- while the union returns ink anticlockwise.
+ * Mixed, a plain letter overlapping a dotted one sums to zero winding where
+ * they cross, and the overlap is cut out of the tag as a gap.
  */
 const markSplit = (
   rings: Ring[],
@@ -165,10 +171,6 @@ const markSplit = (
 ): Contour[] => {
   if (rings.length === 0) return [];
   const islands = geom.union(rings);
-  if (islands.length <= 1) {
-    return rings.map((ring) => ({ ring, glyph, char, line, isMark: false }));
-  }
-
   const areas = islands.map((p) => Math.abs(ringArea(p.outer)));
   const biggest = areas.indexOf(Math.max(...areas));
 
