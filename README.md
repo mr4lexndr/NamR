@@ -46,24 +46,24 @@ Leaving the surname empty gives a one-line tag.
 
 `npm run check` builds 16 randomly generated Polish names and three one-line
 tags in every bundled face, plus Savoye LET and Brush Script where the
-machine has them. All
-190 come out as a single watertight, correctly oriented piece, and every
-two-line tag is held together on at least two different pairs of letters.
+machine has them. All 190 come out as a single watertight, correctly oriented
+piece, and every two-line tag is held together on at least two different pairs
+of letters.
 
 ```
 face          pass   strut-free  longest strut
-AlexBrush     19/19  8/16        5.3mm
-Damion        19/19  11/16       6.8mm
-GreatVibes    19/19  12/16       2.8mm
-Lobster       19/19  14/16       1.7mm
-Norican       19/19  12/16       5.8mm
-Pacifico      19/19  14/16       3.2mm
-Sacramento    19/19  10/16       8.7mm
-Yellowtail    19/19  13/16       4.7mm
-SavoyeLET     19/19  10/16       3.2mm
-BrushScript   19/19  11/16       3.3mm
+AlexBrush     19/19  10/16       3.2mm
+Damion        19/19  10/16       3.5mm
+GreatVibes    19/19  14/16       4.2mm
+Lobster       19/19  14/16       6.8mm
+Norican       19/19  15/16       5.4mm
+Pacifico      19/19  12/16       9.6mm
+Sacramento    19/19  9/16        9.1mm
+Yellowtail    19/19  14/16       4.1mm
+SavoyeLET     19/19  12/16       3.2mm
+BrushScript   19/19  15/16       1.5mm
 
-190/190 pass · 115/160 two-line tags strut-free · 135ms/tag
+190/190 pass · 125/160 two-line tags strut-free · 170ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
@@ -124,10 +124,12 @@ src/geom/
 4. **Tightening.** A script is meant to join up, so a gap between letters is
    closed by pulling them together rather than bridging across it — the result
    reads as handwriting instead of two letters wired together. Each letter may
-   travel `letterTighten`; anything still apart is left to bridging. A shift is
-   rejected if it pushes a letter into a neighbour's counter, and the finished
-   word is compared against the untightened one, so it can never make things
-   worse.
+   travel `letterTighten`; anything still apart is left to bridging. It stops
+   at contact and leaves the join to the weld: pulling further makes strokes
+   that meet at a shallow angle cross, and the lens between the crossings
+   prints as a slit through the stroke. A shift is rejected if it pushes a
+   letter into a neighbour's counter, and the finished word is compared against
+   the untightened one, so it can never make things worse.
 5. **Line placement.** Sliding the surname straight up is the wrong single
    degree of freedom: two lines of script interlock at particular horizontal
    offsets, where a descender drops into the gap between two ascenders. Depth

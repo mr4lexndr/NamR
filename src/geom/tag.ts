@@ -95,7 +95,6 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   const conn = {
     ...params.connect,
     letterTighten: params.connect.letterTighten * k,
-    tightenOverlap: params.connect.tightenOverlap * k,
     minHoleArea: params.connect.minHoleArea * k * k,
   };
 

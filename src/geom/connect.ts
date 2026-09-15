@@ -33,8 +33,6 @@ export interface ConnectOptions {
    * open space is the fallback when the gap is too wide to close by hand.
    */
   letterTighten: number;
-  /** How far past first contact to pull, so the join has width. */
-  tightenOverlap: number;
   /**
    * Rounds the concave corners where a bridge meets a stroke, so a connector
    * flows into the letter instead of butting against it. Applied after
@@ -60,7 +58,6 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   minLineLinks: 2,
   linkSeparation: 14,
   letterTighten: 1.2,
-  tightenOverlap: 0.35,
   filletRadius: 0.25,
   minHoleArea: 4.5,
 };
@@ -275,10 +272,13 @@ export const tightenLine = (
       let budget = opts.letterTighten;
       // A few short steps rather than one guess: the gap is rarely horizontal,
       // so moving by its width does not close it in one go.
+      // Stop at contact and let the weld give the join its width. Pulling past
+      // it makes two strokes meeting at a shallow angle cross, and the thin
+      // lens between the crossings prints as a slit through the stroke.
       for (let i = 0; i < 5 && budget > 0.01; i++) {
         const { dist } = closestPair(placed, geom.union(at(dx)));
         if (dist < 0.01) break;
-        const step = Math.min(dist + opts.tightenOverlap, budget);
+        const step = Math.min(dist, budget);
         dx -= step;
         budget -= step;
       }
