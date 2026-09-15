@@ -33,6 +33,8 @@ export interface ConnectOptions {
    * open space is the fallback when the gap is too wide to close by hand.
    */
   letterTighten: number;
+  /** Tightening never closes a gap into a hole smaller than this, in mm² at a 20mm em. */
+  minEyeArea: number;
   /**
    * Rounds the concave corners where a bridge meets a stroke, so a connector
    * flows into the letter instead of butting against it. Applied after
@@ -58,6 +60,7 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   minLineLinks: 2,
   linkSeparation: 14,
   letterTighten: 1.2,
+  minEyeArea: 4,
   filletRadius: 0.25,
   minHoleArea: 1,
 };
@@ -265,6 +268,13 @@ export const tightenLine = (
     const at = (d: number): Ring[] => rings.map((r) => r.map((p) => ({ x: p.x + d, y: p.y })));
     const islandsWith = (d: number): number =>
       geom.union([...placed.flatMap((p) => [p.outer, ...p.holes]), ...at(d)]).length;
+    // Holes too small to read as a space, once the weld has sealed them. On a
+    // face drawn with its letters apart, pulling each one into its neighbour
+    // traps specks of background between them, and the word prints as fused
+    // blobs. Such a join is left to the weld or a short link instead.
+    const specksWith = (d: number): number =>
+      geom.close(geom.union([...placed.flatMap((p) => [p.outer, ...p.holes]), ...at(d)]), opts.weldRadius)
+        .reduce((n, p) => n + p.holes.filter((h) => Math.abs(ringArea(h)) < opts.minEyeArea).length, 0);
 
     let dx = carry;
     if (placed.length > 0) {
@@ -275,10 +285,12 @@ export const tightenLine = (
       // Stop at contact and let the weld give the join its width. Pulling past
       // it makes two strokes meeting at a shallow angle cross, and the thin
       // lens between the crossings prints as a slit through the stroke.
+      const specksBefore = specksWith(dx);
       for (let i = 0; i < 5 && budget > 0.01; i++) {
         const { dist } = closestPair(placed, geom.union(at(dx)));
         if (dist < 0.01) break;
         const step = Math.min(dist, budget);
+        if (specksWith(dx - step) > specksBefore) break;
         dx -= step;
         budget -= step;
       }

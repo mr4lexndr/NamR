@@ -52,18 +52,18 @@ of letters.
 
 ```
 face          pass   strut-free  longest strut
-AlexBrush     19/19  7/16        4.3mm
+AlexBrush     19/19  5/16        4.3mm
 Damion        19/19  12/16       5.7mm
 GreatVibes    19/19  7/16        5.8mm
-Lobster       19/19  13/16       5.8mm
+Lobster       19/19  12/16       5.8mm
 Norican       19/19  15/16       1.4mm
 Pacifico      19/19  13/16       4.2mm
 Sacramento    19/19  10/16       8.8mm
 Yellowtail    19/19  14/16       3.5mm
-SavoyeLET     19/19  11/16       3.1mm
+SavoyeLET     19/19  8/16        3.1mm
 BrushScript   19/19  13/16       2.1mm
 
-190/190 pass · 115/160 two-line tags strut-free · 272ms/tag
+190/190 pass · 109/160 two-line tags strut-free · 341ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
@@ -127,9 +127,13 @@ src/geom/
    travel `letterTighten`; anything still apart is left to bridging. It stops
    at contact and leaves the join to the weld: pulling further makes strokes
    that meet at a shallow angle cross, and the lens between the crossings
-   prints as a slit through the stroke. A shift is rejected if it pushes a
-   letter into a neighbour's counter, and the finished word is compared against
-   the untightened one, so it can never make things worse.
+   prints as a slit through the stroke. Nor does it close a gap into a hole
+   smaller than 4mm² once welded: on a face drawn with its letters apart,
+   Savoye LET say, pulling each letter into its neighbour trapped specks of
+   background and the word printed as fused blobs, so that join is left to the
+   weld or a short link. A shift is rejected if it pushes a letter into a
+   neighbour's counter, and the finished word is compared against the
+   untightened one, so it can never make things worse.
 5. **Line placement.** Sliding the surname straight up is the wrong single
    degree of freedom: two lines of script interlock at particular horizontal
    offsets, where a descender drops into the gap between two ascenders. Depth
