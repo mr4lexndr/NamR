@@ -318,25 +318,43 @@ export const tightenLine = (
       const before = islandsWith(carry);
       const tips = joinTips(placed, geom.union(at(carry)), geom, band, opts.joinSlack);
       const zoneA = disk(tips.a, opts.joinRadius);
-      let budget = opts.letterTighten;
-      // A few short steps rather than one guess: the gap is rarely horizontal,
-      // so moving by its width does not close it in one go.
-      for (let i = 0; i < 5 && budget > 0.01 && tips.dist >= 0.01; i++) {
-        const glyph = geom.union(at(dx));
-        const zoneB = disk({ x: tips.b.x + dx - carry, y: tips.b.y }, opts.joinRadius);
+      const weldGap = 2 * opts.weldRadius + 0.1;
+      /** How far the join's stroke ends are apart, and how near everything else comes. */
+      const measure = (d: number): { gap: number; rest: number } | null => {
+        const glyph = geom.union(at(d));
+        const zoneB = disk({ x: tips.b.x + d - carry, y: tips.b.y }, opts.joinRadius);
         const endA = intersect(placed, zoneA, geom), endB = intersect(glyph, zoneB, geom);
-        if (endA.length === 0 || endB.length === 0) break;
-        const gap = closestPair(endA, endB).dist;
-        if (gap < 0.01) break;
+        if (endA.length === 0 || endB.length === 0) return null;
         const restA = geom.difference(placed, zoneA), restB = geom.difference(glyph, zoneB);
-        const clearance = Math.min(
-          restA.length ? closestPair(restA, glyph).dist : Infinity,
-          restB.length ? closestPair(placed, restB).dist : Infinity,
-        ) - 2 * opts.weldRadius - 0.1;
-        const step = Math.min(gap, clearance, budget);
-        if (step <= 0.01) break;
-        dx -= step;
-        budget -= step;
+        return {
+          gap: closestPair(endA, endB).dist,
+          rest: Math.min(
+            restA.length ? closestPair(restA, glyph).dist : Infinity,
+            restB.length ? closestPair(placed, restB).dist : Infinity,
+          ),
+        };
+      };
+      let budget = opts.letterTighten;
+      const start = tips.dist >= 0.01 ? measure(dx) : null;
+      if (start && start.rest > 0 && start.rest < weldGap) {
+        // Some other part already sits within welding distance of the
+        // neighbour: Savoye LET's r keeps its top knob half a millimetre from
+        // the letter before, while the strokes meant to join, down at the
+        // baseline, stand further apart. Welded as set, the r hangs off its
+        // knob. Easing it just clear leaves the join to be linked stroke to
+        // stroke instead.
+        dx += Math.min(weldGap - start.rest, budget);
+      } else {
+        // A few short steps rather than one guess: the gap is rarely
+        // horizontal, so moving by its width does not close it in one go.
+        for (let i = 0; i < 5 && budget > 0.01 && start; i++) {
+          const m = measure(dx);
+          if (!m || m.gap < 0.01) break;
+          const step = Math.min(m.gap, m.rest - weldGap, budget);
+          if (step <= 0.01) break;
+          dx -= step;
+          budget -= step;
+        }
       }
       // Tightening can push a letter into a neighbour's counter, which strands
       // it as an island inside a hole and leaves the word worse off than the
@@ -750,13 +768,15 @@ export const connectLine = (
   let polys = geom.union(contours.map((c) => c.ring));
   polys = applyBridges(polys, stems, geom);
   polys = geom.close(polys, opts.weldRadius);
-  // A letter still apart is linked where its strokes were meant to join, the
-  // same place tightening aimed for, so the link continues the script. Ids are
-  // in the line's own coordinates, so an edit still finds its link after the
-  // surname has been moved.
+  // A letter still apart is linked where its strokes were meant to join, low
+  // in the band so the link runs along the baseline like the exit stroke it
+  // continues; higher up it cuts diagonally across the valley between letters.
+  // Ids are in the line's own coordinates, so an edit still finds its link
+  // after the surname has been moved.
+  const baseline = { y0: band.y0, y1: band.y0 + (band.y1 - band.y0) * 0.55 };
   const joins = bridgeIslands(
     polys, opts, `join:${contours[0]!.line}`,
-    (a, b) => joinTips(a, b, geom, band, opts.joinSlack),
+    (a, b) => joinTips(a, b, geom, baseline, opts.joinSlack),
   ).bridges.filter((b) => !dropped.has(b.id));
   return { contours, polys: applyBridges(polys, joins, geom), bridges: [...stems, ...joins] };
 };

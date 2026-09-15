@@ -53,18 +53,18 @@ the length that reads as part of a stroke.
 
 ```
 face          pass   short-link longest link
-AlexBrush     19/19  5/16        3.6mm
-Damion        19/19  4/16        5.8mm
+AlexBrush     19/19  1/16        4.1mm
+Damion        19/19  5/16        5.1mm
 GreatVibes    19/19  3/16        5.4mm
-Lobster       19/19  7/16        4.3mm
-Norican       19/19  10/16       3.5mm
-Pacifico      19/19  5/16        3.6mm
+Lobster       19/19  6/16        4.4mm
+Norican       19/19  11/16       5.1mm
+Pacifico      19/19  6/16        4.6mm
 Sacramento    19/19  6/16        4.4mm
-Yellowtail    19/19  3/16        3.9mm
+Yellowtail    19/19  3/16        4.8mm
 SavoyeLET     19/19  0/16        4.1mm
-BrushScript   19/19  8/16        3.9mm
+BrushScript   19/19  7/16        4.0mm
 
-190/190 pass · 51/160 two-line tags with every link ≤2mm · 191ms/tag
+190/190 pass · 48/160 two-line tags with every link ≤2mm · 189ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
@@ -135,10 +135,14 @@ src/geom/
    d before it at the shoulder and fused there, and the letters trapped specks
    that printed as blobs. It also stops at contact and leaves the join its
    width from the weld: pulling further makes strokes meeting at a shallow
-   angle cross, and the lens between the crossings prints as a slit.
+   angle cross, and the lens between the crossings prints as a slit. If some
+   other part already sits within welding distance as set — Savoye LET's r
+   keeps its top knob half a millimetre from the letter before — the letter is
+   eased just clear, or it would hang off that knob.
 
    Accents are stemmed, near-misses welded, and any letter still apart is
-   linked at those same stroke ends, so the link continues the script. Only
+   linked at those same stroke ends, low down so the link runs along the
+   baseline like the exit stroke it continues. Only
    then is the line placed. Solving both lines at once let a letter be held on
    only through the other line, so either name on its own fell apart.
 5. **Line placement.** Sliding the surname straight up is the wrong single
