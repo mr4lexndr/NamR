@@ -706,11 +706,14 @@ export const connect = (
   const keep = (b: Bridge): boolean => !dropped.has(b.id);
   const warnings: string[] = [];
   const stems = markStems(contours, geom, opts).filter(keep);
+  // A link placed or moved by hand follows the connector width in force now,
+  // not whatever it was when the link was made.
+  const own = manual.map((b) => ({ ...b, width: opts.bridgeWidth }));
 
   const counters = glyphCounters(contours, geom, opts);
 
   let polys = geom.union(contours.map((c) => c.ring));
-  polys = applyBridges(polys, [...stems, ...manual], geom);
+  polys = applyBridges(polys, [...stems, ...own], geom);
   polys = geom.close(polys, opts.weldRadius);
 
   const found = linkLines(
@@ -755,5 +758,5 @@ export const connect = (
   const components = polys.length;
   if (components > 1) warnings.push(`${components} separate pieces remain`);
 
-  return { polys, bridges: [...stems, ...manual, ...links, ...auto], components, lineLinks, warnings };
+  return { polys, bridges: [...stems, ...own, ...links, ...auto], components, lineLinks, warnings };
 };

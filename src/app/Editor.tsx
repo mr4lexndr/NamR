@@ -5,6 +5,8 @@ import type { Pt } from '../geom/types';
 interface Props {
   outline: number[][];
   bridges: { a: Pt; b: Pt; width: number; kind: string; id: string }[];
+  /** Width a new link is drawn at until the rebuild comes back. */
+  linkWidth: number;
   manual: Bridge[];
   suppressed: string[];
   onManualChange: (next: Bridge[]) => void;
@@ -25,7 +27,7 @@ const PAD = 6;
  * actually needs fixing when a tag comes out in two pieces.
  */
 export const Editor = ({
-  outline, bridges, manual, suppressed, onManualChange, onSuppressedChange,
+  outline, bridges, linkWidth, manual, suppressed, onManualChange, onSuppressedChange,
   offset, onOffsetChange, onClose,
 }: Props): React.ReactElement => {
   const [mode, setMode] = useState<Mode>('link');
@@ -76,7 +78,7 @@ export const Editor = ({
   /** Turn an automatic link into one of the user's own, at a new position. */
   const rehome = (id: string, a: Pt, b: Pt): void => {
     onManualChange([...manual.filter((m) => m.id !== id),
-      { id: id.startsWith('manual:') ? id : `manual:${id}`, a, b, width: 1.1, kind: 'manual' }]);
+      { id: id.startsWith('manual:') ? id : `manual:${id}`, a, b, width: linkWidth, kind: 'manual' }]);
     if (!id.startsWith('manual:') && !suppressed.includes(id)) onSuppressedChange([...suppressed, id]);
   };
 
@@ -96,7 +98,7 @@ export const Editor = ({
     if (!pending) { setPending(p); return; }
     onManualChange([
       ...manual,
-      { id: `manual:${Date.now()}`, a: pending, b: p, width: 1.1, kind: 'manual' },
+      { id: `manual:${Date.now()}`, a: pending, b: p, width: linkWidth, kind: 'manual' },
     ]);
     setPending(null);
   };

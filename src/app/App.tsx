@@ -70,6 +70,8 @@ const toParams = (s: Settings): TagParams => ({
     ...DEFAULT_TAG.connect,
     weldRadius: s.weldRadius,
     bridgeWidth: s.bridgeWidth,
+    // Accent stems stay a shade finer than struts, in the same proportion.
+    stemWidth: s.bridgeWidth * (DEFAULT_TAG.connect.stemWidth / DEFAULT_TAG.connect.bridgeWidth),
     letterTighten: s.letterTighten,
     filletRadius: s.filletRadius,
     minHoleArea: s.minHoleArea,
@@ -279,8 +281,9 @@ export const App = (): React.ReactElement => {
           <Slider label="Weld radius" unit="mm" min={0} max={1.5} step={0.05}
             value={s.weldRadius} onChange={(v) => num('weldRadius', v)}
             hint={`Closes gaps up to ${(s.weldRadius * 2).toFixed(2)}mm`} />
-          <Slider label="Bridge width" unit="mm" min={0.4} max={3} step={0.05}
-            value={s.bridgeWidth} onChange={(v) => num('bridgeWidth', v)} />
+          <Slider label="Connector width" unit="mm" min={0.4} max={3} step={0.05}
+            value={s.bridgeWidth} onChange={(v) => num('bridgeWidth', v)}
+            hint="Every added link, yours included; accent stems a shade finer" />
           <Slider label="Connector blend" unit="mm" min={0} max={1} step={0.05}
             value={s.filletRadius} onChange={(v) => num('filletRadius', v)}
             hint="Rounds where a connector meets a stroke" />
@@ -348,6 +351,7 @@ export const App = (): React.ReactElement => {
           <Editor
             outline={res.outline}
             bridges={res.bridges ?? []}
+            linkWidth={s.bridgeWidth}
             manual={s.manual}
             suppressed={s.suppressed}
             onManualChange={(manual) => setS((p) => ({ ...p, manual }))}
