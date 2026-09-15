@@ -129,7 +129,9 @@ export const buildBatch = (
     }),
   ].join('\n');
 
-  const entries: Record<string, Uint8Array> = { 'manifest.csv': new TextEncoder().encode(manifest) };
+  // The byte-order mark is what tells Excel the file is UTF-8. Without it Excel
+  // reads Mac Roman or Windows-1250 and every Polish letter comes out mangled.
+  const entries: Record<string, Uint8Array> = { 'manifest.csv': new TextEncoder().encode(`﻿${manifest}`) };
   for (const f of files) entries[f.name] = f.bytes;
 
   return { reports, plates, rejected, files, zip: zipSync(entries, { level: 6 }) };
