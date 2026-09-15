@@ -1,5 +1,6 @@
 import * as OT from 'opentype.js';
 import type { Font } from 'opentype.js';
+import { singleFace } from './sfnt';
 
 /**
  * opentype.js v2 ships an ESM bundle with only named exports and a UMD bundle
@@ -13,5 +14,8 @@ const ns = OT as unknown as { parse?: ParseFn; default?: { parse?: ParseFn } };
 const fn = ns.parse ?? ns.default?.parse;
 if (!fn) throw new Error('opentype.js: no parse export found');
 
-export const parseFont: ParseFn = fn;
+const parse = fn;
+
+/** Parses a font file; from a .ttc collection, its first face. */
+export const parseFont: ParseFn = (data) => parse(singleFace(data));
 export type { Font, Path } from 'opentype.js';

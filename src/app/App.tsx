@@ -8,6 +8,8 @@ import { DEFAULT_TAG } from '../geom/tag';
 import type { TagParams } from '../geom/tag';
 import type { BuildResponse, Request, RequestInit_ } from './worker';
 import { clearStoredFont, loadStoredFont, saveFont } from './fontStore';
+import { LOCAL_FONTS, readLocalFont } from './localFonts';
+import type { LocalFont } from './localFonts';
 
 /** Open-licensed connected scripts, all verified for full Polish coverage. */
 const BUNDLED = [
@@ -212,6 +214,22 @@ export const App = (): React.ReactElement => {
     setBusy(false);
   };
 
+  const pickLocal = async (font: LocalFont) => {
+    setBusy(true);
+    try {
+      const buf = await readLocalFont(font);
+      await loadFontBuffer(buf, font.label);
+      // Remembered like an uploaded font, so a reload does not ask again.
+      await saveFont(font.label, buf);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+    setBusy(false);
+  };
+
+  const fontValue = BUNDLED.some((b) => b.label === fontName) ? fontName
+    : LOCAL_FONTS.some((f) => f.label === fontName) ? `local:${fontName}` : '';
+
   const info = res?.info;
   const num = (k: keyof Settings, v: number) => setS((p) => ({ ...p, [k]: v }));
 
@@ -292,31 +310,33 @@ export const App = (): React.ReactElement => {
         )}
 
         <label className="fld top"><span>Font</span>
-          <select value={BUNDLED.some((b) => b.label === fontName) ? fontName : ''}
+          <select value={fontValue}
             onChange={(e) => {
+              const local = LOCAL_FONTS.find((f) => `local:${f.label}` === e.target.value);
+              if (local) { void pickLocal(local); return; }
               const b = BUNDLED.find((q) => q.label === e.target.value);
               if (b) { void clearStoredFont(); void pickBundled(b.file, b.label); }
             }}>
             {BUNDLED.map((b) => <option key={b.label} value={b.label}>{b.label} — {b.note}</option>)}
-            {!BUNDLED.some((b) => b.label === fontName) && <option value="">{fontName} (yours)</option>}
+            <optgroup label="From your computer">
+              {LOCAL_FONTS.map((f) => <option key={f.label} value={`local:${f.label}`}>{f.label} — {f.note}</option>)}
+            </optgroup>
+            {fontValue === '' && <option value="">{fontName} (yours)</option>}
           </select>
         </label>
         <label className="fld"><span>…or use your own</span>
-          <input type="file" accept=".ttf,.otf,font/ttf,font/otf"
+          <input type="file" accept=".ttf,.otf,.ttc,font/ttf,font/otf,font/collection"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void onFont(f); }} />
         </label>
         <p className="note">
           Fonts are read in your browser — nothing about your guests is uploaded.
         </p>
         <p className="help dimmer">
-          Want <b>Brush Script MT</b>? It belongs to the Monotype foundry and
-          cannot be bundled here, but you can load your own copy above. It ships
-          with Microsoft Office and macOS, so check{' '}
-          <code>/System/Library/Fonts/Supplemental/</code> or{' '}
-          <code>C:\Windows\Fonts\</code> first — otherwise it is sold at{' '}
-          <a href="https://www.myfonts.com/collections/brush-script-font-mti"
-             target="_blank" rel="noreferrer noopener">MyFonts</a>.
-          Yellowtail is the closest free stand-in.
+          <b>Savoye LET</b> and <b>Brush Script</b> belong to Monotype, so they
+          are not bundled: NamR uses the copy already on your computer. That
+          needs Chrome or Edge, and allowing font access when asked. Otherwise
+          load the file above; on a Mac both are in{' '}
+          <code>/System/Library/Fonts/Supplemental/</code>.
         </p>
         <p className="version">NamR v{__APP_VERSION__}</p>
       </aside>

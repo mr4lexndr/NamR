@@ -21,7 +21,8 @@ as **one connected solid**: no supports, no glue, no assembly.
 - **Reads face-down on the glass**, so the visible side comes off smooth.
 - **Polish and Latin Extended** throughout — ą ć ę ł ń ó ś ź ż keep their
   accents, joined to the letter they belong to.
-- **Nine script faces bundled**, or load your own; it is parsed in the browser.
+- **Eight script faces bundled**, Savoye LET and Brush Script from your own
+  computer, or load any font file; it is parsed in the browser.
 - **Nothing is uploaded.** No account, no server. It is a static site, so guest
   names never leave your machine.
 
@@ -211,18 +212,25 @@ advisories for code that imports neither. `.npmrc` sets `legacy-peer-deps`.
 
 ## Fonts
 
-Brush Script MT belongs to Monotype and cannot be redistributed, so the app
-bundles eight open-licensed connected scripts instead — Yellowtail, Pacifico,
+Eight open-licensed connected scripts are bundled — Yellowtail, Pacifico,
 Lobster, Damion, Norican, Sacramento, Alex Brush and Great Vibes. All have
 complete Polish coverage and all solve to a single piece across the test
 names. They are fetched on demand, so only the chosen one is downloaded.
 
-Anything else can be loaded from disk. It is parsed in the browser, kept in
-IndexedDB so it survives a reload, and never transmitted — which is also how
-to use a licensed face you already own. Using Brush Script yourself is fine;
-serving it from the site would be redistributing Monotype's font to every
-visitor, which is a different thing and no licence covers it. Brush Script is
-used for local validation via `FONT=`.
+Savoye LET and Brush Script belong to Monotype and cannot be served from here,
+but nearly every Mac already has both. The picker reads the visitor's own
+installed copy through the Local Font Access API, which needs a Chromium
+browser (Chrome or Edge) and the visitor's permission when it asks. macOS
+keeps Savoye LET in a `.ttc` collection and the browser hands over the whole
+file, so `src/geom/sfnt.ts` cuts out the one face by its PostScript name;
+opentype.js reads single fonts only.
+
+Anything else can be loaded from disk, `.ttc` collections included. It is
+parsed in the browser, kept in IndexedDB so it survives a reload, and never
+transmitted — which is also how to use a licensed face you already own, and
+how Savoye LET and Brush Script work in Safari and Firefox. Using either
+yourself is fine; serving the file from the site would be redistributing
+Monotype's font to every visitor, which no licence here covers.
 
 ## Development
 
