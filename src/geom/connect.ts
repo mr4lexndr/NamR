@@ -35,7 +35,13 @@ export interface ConnectOptions {
   letterTighten: number;
   /** How far around a join's stroke ends counts as the join, mm at a 20mm em. */
   joinRadius: number;
-  /** How much further a join near the baseline may be than the nearest approach and still be preferred, mm at a 20mm em. */
+  /**
+   * How much further a join near the baseline may be than the nearest
+   * approach and still be preferred, mm at a 20mm em. Small: Savoye LET's r
+   * has its baseline join only a quarter millimetre further than its top
+   * knob, while a crossbar like ł's is a millimetre and more nearer than its
+   * foot, and joins best there.
+   */
   joinSlack: number;
   /**
    * Rounds the concave corners where a bridge meets a stroke, so a connector
@@ -63,7 +69,7 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   linkSeparation: 14,
   letterTighten: 1.2,
   joinRadius: 2,
-  joinSlack: 2,
+  joinSlack: 0.5,
   filletRadius: 0.25,
   minHoleArea: 1,
 };
@@ -740,6 +746,67 @@ const intersect = (a: Poly[], b: Poly[], geom: Geom): Poly[] => {
   return geom.difference(a, geom.difference(a, b));
 };
 
+/** Area-weighted centroid of a set of polygons, holes subtracted. */
+const centroid = (polys: Poly[]): Pt => {
+  let a = 0, cx = 0, cy = 0;
+  for (const r of ringsOf(polys)) {
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const f = r[j]!.x * r[i]!.y - r[i]!.x * r[j]!.y;
+      a += f;
+      cx += (r[j]!.x + r[i]!.x) * f;
+      cy += (r[j]!.y + r[i]!.y) * f;
+    }
+  }
+  return a === 0 ? ringsOf(polys)[0]![0]! : { x: cx / (3 * a), y: cy / (3 * a) };
+};
+
+/**
+ * Reinforce every join between neighbouring letters that is thinner than a
+ * connector.
+ *
+ * Letters pulled together until they touch, or left within welding distance,
+ * meet at a point: the weld fills a pinch no wider than the gap was, and it
+ * snaps. The connector width never reached those joins, because nothing was
+ * added there. Each one now gets a connector of that width laid along the two
+ * strokes where they meet, from inside one to inside the other. A join where
+ * the strokes already overlap by a connector's width is left alone.
+ */
+export const braceJoins = (contours: Contour[], geom: Geom, opts: ConnectOptions): Bridge[] => {
+  const byGlyph = new Map<number, Ring[]>();
+  for (const c of contours) {
+    if (c.isMark) continue;
+    byGlyph.set(c.glyph, [...(byGlyph.get(c.glyph) ?? []), c.ring]);
+  }
+  const glyphs = [...byGlyph.keys()].sort((a, b) => a - b).map((g) => geom.union(byGlyph.get(g)!));
+  const reach = opts.bridgeWidth;
+  const braces: Bridge[] = [];
+
+  for (let i = 0; i + 1 < glyphs.length; i++) {
+    const A = glyphs[i]!, B = glyphs[i + 1]!;
+    const { a, b, dist } = closestPair(A, B);
+    if (dist > 2 * opts.weldRadius) continue;
+    const shared = intersect(A, B, geom);
+    if (shared.length && geom.survivesErosion(shared, opts.bridgeWidth)) continue;
+
+    const at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const zone = disk(at, reach);
+    const nearA = intersect(A, zone, geom), nearB = intersect(B, zone, geom);
+    if (!nearA.length || !nearB.length) continue;
+    // The middle of each stroke near the join, pulled back onto the stroke if
+    // it curves away from its own centroid.
+    const onto = (p: Pt, region: Poly[]): Pt =>
+      geom.area(intersect(disk(p, 0.05), region, geom)) > 0 ? p : closestPair(disk(p, 0.01), region).b;
+    const from = onto(centroid(nearA), nearA), to = onto(centroid(nearB), nearB);
+    braces.push({
+      id: `brace:${contours[0]!.line}:${at.x.toFixed(1)},${at.y.toFixed(1)}`,
+      a: from, b: to,
+      width: opts.bridgeWidth,
+      kind: 'auto',
+    });
+  }
+  return braces;
+};
+
 /** One line of the name, joined into a single piece on its own. */
 export interface LinePiece {
   contours: Contour[];
@@ -765,8 +832,9 @@ export const connectLine = (
   if (contours.length === 0) return { contours, polys: [], bridges: [] };
   const dropped = new Set(suppressed);
   const stems = markStems(contours, geom, opts).filter((b) => !dropped.has(b.id));
+  const braces = braceJoins(contours, geom, opts).filter((b) => !dropped.has(b.id));
   let polys = geom.union(contours.map((c) => c.ring));
-  polys = applyBridges(polys, stems, geom);
+  polys = applyBridges(polys, [...stems, ...braces], geom);
   polys = geom.close(polys, opts.weldRadius);
   // A letter still apart is linked where its strokes were meant to join, low
   // in the band so the link runs along the baseline like the exit stroke it
@@ -778,7 +846,7 @@ export const connectLine = (
     polys, opts, `join:${contours[0]!.line}`,
     (a, b) => joinTips(a, b, geom, baseline, opts.joinSlack),
   ).bridges.filter((b) => !dropped.has(b.id));
-  return { contours, polys: applyBridges(polys, joins, geom), bridges: [...stems, ...joins] };
+  return { contours, polys: applyBridges(polys, joins, geom), bridges: [...stems, ...braces, ...joins] };
 };
 
 export const translatePiece = (piece: LinePiece, dx: number, dy: number): LinePiece => ({

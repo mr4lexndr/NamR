@@ -53,18 +53,18 @@ the length that reads as part of a stroke.
 
 ```
 face          pass   short-link longest link
-AlexBrush     19/19  1/16        4.1mm
-Damion        19/19  5/16        5.1mm
-GreatVibes    19/19  3/16        5.4mm
-Lobster       19/19  6/16        4.4mm
-Norican       19/19  11/16       5.1mm
-Pacifico      19/19  6/16        4.6mm
+AlexBrush     19/19  5/16        3.3mm
+Damion        19/19  8/16        3.5mm
+GreatVibes    19/19  6/16        5.4mm
+Lobster       19/19  8/16        4.4mm
+Norican       19/19  10/16       3.3mm
+Pacifico      19/19  10/16       3.6mm
 Sacramento    19/19  6/16        4.4mm
-Yellowtail    19/19  3/16        4.8mm
-SavoyeLET     19/19  0/16        4.1mm
-BrushScript   19/19  7/16        4.0mm
+Yellowtail    19/19  7/16        3.6mm
+SavoyeLET     19/19  3/16        3.8mm
+BrushScript   19/19  8/16        2.4mm
 
-190/190 pass · 48/160 two-line tags with every link ≤2mm · 189ms/tag
+190/190 pass · 71/160 two-line tags with every link ≤2mm · 204ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
@@ -139,6 +139,12 @@ src/geom/
    other part already sits within welding distance as set — Savoye LET's r
    keeps its top knob half a millimetre from the letter before — the letter is
    eased just clear, or it would hang off that knob.
+
+   Letters that only touch, or sit within welding distance, meet at a point
+   the weld fills no wider than the gap, and that snaps however wide the
+   connectors are set. Every such join gets a connector of that width laid
+   along the two strokes where they meet; a join already overlapping by a
+   connector's width is left alone.
 
    Accents are stemmed, near-misses welded, and any letter still apart is
    linked at those same stroke ends, low down so the link runs along the
