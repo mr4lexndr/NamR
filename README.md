@@ -107,7 +107,7 @@ src/geom/
   export.ts     binary STL, 3MF, manifold check
   tag.ts        the whole pipeline for one tag
   csv.ts        guest list parsing, delimiter sniffing
-  pack.ts       shelf packing onto printer beds
+  pack.ts       maximal-rectangles packing onto printer beds
   batch.ts      many names -> plates -> zip + manifest
 ```
 
@@ -199,11 +199,14 @@ than assumed — Polish Excel writes semicolons — the BOM is stripped, a heade
 row is detected if present, and a single-column file is split on the last
 space so multi-part given names survive.
 
-Tags are packed tallest-first onto shelves. Name tags are long and shallow
-with widths that vary a lot and depths that barely do, so they form full rows
-naturally; a shelf gets close to optimal on that shape while staying
-predictable, which matters when you have to recognise the plate in a slicer.
-16 names land on two 220mm plates at 55% coverage.
+Tags are packed longest-first, each on the earliest plate it fits, filling
+from the top-left. Name tags are long and shallow, so they settle into rows,
+and every row ends in a strip too narrow for another tag lying flat but deep
+enough, across two rows, for one turned a quarter. Tracking every free
+rectangle rather than a shelf finds those strips; turning is about Z, so the
+reading face stays on the glass. On random 82-name lists this averages 5.0
+plates on a 256mm bed where shelf packing needed 5.9, and 7 on a 220mm bed
+where it needed 8, with only the tags at the ends of rows turned.
 
 The download is a zip of either one file per plate or one per tag, plus a
 `manifest.csv` naming every tag, its plate and any warning.
