@@ -503,12 +503,17 @@ export interface Placement2D {
  * script interlock at particular horizontal offsets, where a descender drops
  * into the gap between two ascenders. Searching sideways as well as vertically
  * finds those, and the pair then joins by overlapping the way the reference
- * sketches do — several honest welds instead of one contact plus struts.
+ * sketches do.
  *
  * The search runs on decimated outlines. It evaluates a few hundred
  * placements, and at full resolution that would cost more than the rest of the
  * pipeline put together; the answer is a millimetre-scale offset, so tenth-
  * millimetre detail cannot change it.
+ *
+ * `linkCost` prices what the rest of the pipeline will still add to tie the
+ * lines on two letter pairs. It is too slow to run on every placement, so the
+ * few best by the cheap score are re-ranked with it: without that the search
+ * happily settles on one weld and leaves a long strut to some distant letter.
  */
 export const solveLinePlacement = (
   top: Poly[],
@@ -516,6 +521,7 @@ export const solveLinePlacement = (
   geom: Geom,
   opts: ConnectOptions,
   simplify: (p: Poly[], tol: number) => Poly[],
+  linkCost?: (dx: number, dy: number) => number,
 ): Placement2D => {
   const coarse = { T: simplify(top, 0.5), B: simplify(bottom, 0.5) };
   const fine = { T: simplify(top, 0.2), B: simplify(bottom, 0.2) };
@@ -536,10 +542,9 @@ export const solveLinePlacement = (
 
   /**
    * Total strut a placement would still need: the minimum spanning tree over
-   * whatever islands are left. This is the term that matters. Counting welds
-   * alone is happy to accept a position that welds twice and then leaves a
-   * letter stranded across half the tag, and the strut bridging that gap is
-   * the thing that looks wrong.
+   * whatever islands are left. Counting welds alone is happy to accept a
+   * position that welds twice and then leaves a letter stranded across half
+   * the tag, and the strut bridging that gap is the thing that looks wrong.
    */
   const strutLength = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): number => {
     const islands = geom.union([...ringsOf(P.T), ...ringsOf(translate(P.B, dx, dy))]);
@@ -566,114 +571,77 @@ export const solveLinePlacement = (
   /**
    * Cost of one placement.
    *
-   * Depth has to be searched, not assumed: the shallowest overlap that welds
-   * is often not the one that reads best, and pushing the lines further into
-   * each other frequently removes a strut altogether. What stops that running
-   * away is the mutual overlap area — how much ink the two lines share. A
-   * weld costs a few square millimetres; two lines marching through each other
-   * cost hundreds, which is the state where the name stops being readable.
+   * Readability comes first. How much ink the two lines share is the measure,
+   * as a fraction of the smaller line so a short name is not drowned by an
+   * overlap that would be a sound weld on a long one; it rises steeply past 2%.
+   * Earlier weights let a third weld buy several percent more overlap, and the
+   * lines were pushed until a first name's letters sat inside the surname's.
+   * Welds earn credit only up to the two a tag needs, and a short strut is
+   * cheap next to a crowded name.
    */
   const cost = (
     P: { T: Poly[]; B: Poly[] },
     dx: number,
     dy: number,
     ceiling = Infinity,
-  ): { score: number; welds: number; drowned: number } => {
+  ): { score: number; welds: number } => {
     const moved = translate(P.B, dx, dy);
     const welds = countWelds(P.T, moved, geom, opts.minWeldWidth);
     const merged = geom.union([...ringsOf(P.T), ...ringsOf(moved)]);
-    const shared = Math.max(0, areaSum - geom.area(merged));
-    // Cap the credit for welds. Two or three is all a tag needs, and past
-    // that a high count is not quality: it means the lines have driven
-    // through each other and the intersection has broken into many pieces.
-    // Uncapped, that reads as a dozen excellent joins and wins every time.
-    const useful = Math.min(welds, 3);
-    // Judge overlap as a fraction of the smaller line, not in bare mm². A
-    // short name has little ink, so the few square millimetres that make a
-    // sound weld on a long one already means its capital has been driven
-    // straight through the other line.
-    const drowned = shared / areaMin;
-    // Gentle up to a tenth of the smaller line's ink, then steeply punishing.
-    // A cliff instead would commit to the tightest feasible overlap even when
-    // easing off a little would have avoided a long strut entirely.
-    const crowding = drowned * 60 + Math.max(0, drowned - 0.1) ** 2 * 2000;
-    const cheap = -useful * 4 + crowding + Math.abs(dx) * 0.06;
+    const shared = Math.max(0, areaSum - geom.area(merged)) / areaMin;
+    const crowding = shared * 250 + Math.max(0, shared - 0.02) ** 2 * 10000;
+    const cheap = -Math.min(welds, 2) * 2 + crowding + Math.abs(dx) * 0.06;
     // The island tree is by far the costliest term and can only add to the
-    // score, so a placement already worse than the best without it can be
+    // score, so a placement that cannot make the shortlist without it is
     // dropped unmeasured. That prunes most of the grid.
-    if (cheap >= ceiling) return { score: cheap, welds, drowned };
-    return { score: cheap + strutLength(P, dx, dy) * 1.5, welds, drowned };
+    if (cheap >= ceiling) return { score: cheap, welds };
+    return { score: cheap + strutLength(P, dx, dy), welds };
   };
 
-  let best: Placement2D | null = null;
+  const SHORTLIST = 5;
+  let ranked: Placement2D[] = [];
   const consider = (P: { T: Poly[]; B: Poly[] }, dx: number, dy: number): void => {
-    const r = cost(P, dx, dy, best?.score ?? Infinity);
-    if (!best || r.score < best.score) best = { dx, dy, welds: r.welds, score: r.score };
+    const ceiling = ranked.length < SHORTLIST ? Infinity : ranked.at(-1)!.score;
+    const r = cost(P, dx, dy, ceiling);
+    if (r.score >= ceiling) return;
+    ranked = [...ranked, { dx, dy, welds: r.welds, score: r.score }]
+      .sort((a, b) => a.score - b.score)
+      .slice(0, SHORTLIST);
   };
 
-  // Coarse sweep of both axes on heavily decimated outlines.
+  // Coarse sweep of both axes on heavily decimated outlines. Depth is stepped
+  // finely enough to find the placement just past first contact, which is
+  // where the clean ones sit.
   const reach = span * 0.4;
-  const DX = 11, DY = 7;
+  const DX = 11, DY = 12;
   for (let i = 0; i <= DX; i++) {
     const dx = -reach + (2 * reach * i) / DX;
     for (let j = 1; j <= DY; j++) {
       consider(coarse, dx, clear + (maxTravel * j) / DY);
     }
   }
-  if (!best) return { dx: 0, dy: clear + maxTravel, welds: 0, score: Infinity };
+  if (ranked.length === 0) return { dx: 0, dy: clear + maxTravel, welds: 0, score: Infinity };
 
-  // ...then a local refinement at finer resolution around the winner.
-  const seed = best as Placement2D;
-  best = null;
+  // ...then refine around each of the leaders at finer resolution.
+  const seeds = ranked;
+  ranked = [];
   const stepX = reach / DX, stepY = maxTravel / DY;
-  for (let i = -1; i <= 1; i++) {
-    for (let j = -1; j <= 1; j++) {
-      consider(fine, seed.dx + i * stepX, Math.min(clear + maxTravel, seed.dy + j * stepY));
+  for (const seed of seeds) {
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        consider(fine, seed.dx + i * stepX, Math.min(clear + maxTravel, seed.dy + j * stepY));
+      }
     }
   }
-  return best ?? seed;
-};
+  if (ranked.length === 0) return seeds[0]!;
+  if (!linkCost) return ranked[0]!;
 
-/**
- * Slide the surname up under the first name until the two lines share a weld
- * at least `minWeldWidth` across. Binary search on the offset: the predicate
- * is monotone because moving the lines together can only ever grow the
- * overlap, so the first offset that welds is the shallowest one that does.
- */
-export const solveLineOverlap = (
-  top: Poly[],
-  bottom: Poly[],
-  geom: Geom,
-  opts: ConnectOptions,
-  extraBite = 0.4,
-): { dy: number; welded: boolean } => {
-  const tb = bboxOf(ringsOf(top));
-  const bb = bboxOf(ringsOf(bottom));
-
-  // Start clear of each other, then close the gap by at most a fraction of
-  // the shorter line, so the two never march through one another.
-  const clear = tb.y0 - bb.y1;
-  const shorter = Math.min(tb.y1 - tb.y0, bb.y1 - bb.y0);
-  const maxTravel = shorter * opts.maxOverlapFraction;
-
-  const welds = (dy: number): boolean => {
-    const moved = translate(bottom, 0, dy);
-    const overlap = intersect(top, moved, geom);
-    return overlap.length > 0 && geom.survivesErosion(overlap, opts.minWeldWidth);
-  };
-
-  let lo = clear;              // no overlap
-  let hi = clear + maxTravel;  // as deep as we allow
-  // Not welding at the cap is fine and common on a light face: bridges take
-  // over from here.
-  if (!welds(hi)) return { dy: hi, welded: false };
-
-  for (let i = 0; i < 24; i++) {
-    const mid = (lo + hi) / 2;
-    if (welds(mid)) hi = mid;
-    else lo = mid;
+  let pick = ranked[0]!, pickTotal = Infinity;
+  for (const c of ranked) {
+    const total = c.score + linkCost(c.dx, c.dy);
+    if (total < pickTotal) { pickTotal = total; pick = c; }
   }
-  return { dy: hi + extraBite, welded: true };
+  return pick;
 };
 
 export const translate = (polys: Poly[], dx: number, dy: number): Poly[] =>

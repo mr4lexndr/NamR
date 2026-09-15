@@ -46,6 +46,11 @@ const SYSTEM_FONTS: [string, string][] = [
   ['/System/Library/Fonts/Supplemental/Brush Script.ttf', 'BrushScript'],
 ];
 const sheets = process.argv.includes('--sheets');
+const arg = (name: string): string | undefined =>
+  process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+/** `--weight=0.8` checks with thickened strokes; `--font=SavoyeLET` checks one face. */
+const params = { ...DEFAULT_TAG, weight: Number(arg('weight') ?? DEFAULT_TAG.weight) };
+const only = arg('font');
 
 const fonts: [string, string][] = [
   ...readdirSync('public/fonts')
@@ -88,6 +93,7 @@ if (sheets) mkdirSync('out/check', { recursive: true });
 
 console.log('face          pass   strut-free  longest strut');
 for (const [path, label] of fonts) {
+  if (only && label !== only) continue;
   const { font } = loadFont(readFileSync(path).buffer.slice(0) as ArrayBuffer);
   let pass = 0, clean = 0, longest = 0;
   const cells: Cell[] = [];
@@ -122,12 +128,12 @@ for (const [path, label] of fonts) {
 
   for (const [first, last] of NAMES) {
     const t0 = performance.now();
-    const r = buildTag(font, geom, { ...DEFAULT_TAG, first, last });
+    const r = buildTag(font, geom, { ...params, first, last });
     ms += performance.now() - t0;
     judge(`${first} ${last}`, r, true);
   }
   for (const first of SINGLE) {
-    judge(`${first} (one line)`, buildTag(font, geom, { ...DEFAULT_TAG, first, last: '' }), false);
+    judge(`${first} (one line)`, buildTag(font, geom, { ...params, first, last: '' }), false);
   }
 
   console.log(
@@ -137,7 +143,7 @@ for (const [path, label] of fonts) {
   if (sheets) writeFileSync(`out/check/${label}.svg`, toSvg(gridLayers(cells)));
 }
 
-const twoLine = NAMES.length * fonts.length;
+const twoLine = NAMES.length * (only ? 1 : fonts.length);
 console.log(
   `\n${tags - failed}/${tags} pass · ${strutFree}/${twoLine} two-line tags strut-free · ` +
   `${(ms / twoLine).toFixed(0)}ms/tag`,

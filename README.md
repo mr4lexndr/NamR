@@ -52,18 +52,18 @@ of letters.
 
 ```
 face          pass   strut-free  longest strut
-AlexBrush     19/19  10/16       3.2mm
-Damion        19/19  10/16       3.5mm
-GreatVibes    19/19  14/16       4.2mm
-Lobster       19/19  14/16       6.8mm
-Norican       19/19  15/16       5.4mm
-Pacifico      19/19  12/16       9.6mm
-Sacramento    19/19  9/16        9.1mm
-Yellowtail    19/19  14/16       4.1mm
-SavoyeLET     19/19  12/16       3.2mm
-BrushScript   19/19  15/16       1.5mm
+AlexBrush     19/19  7/16        4.3mm
+Damion        19/19  12/16       5.7mm
+GreatVibes    19/19  7/16        5.8mm
+Lobster       19/19  13/16       5.8mm
+Norican       19/19  15/16       1.4mm
+Pacifico      19/19  13/16       4.2mm
+Sacramento    19/19  10/16       8.8mm
+Yellowtail    19/19  14/16       3.5mm
+SavoyeLET     19/19  11/16       3.1mm
+BrushScript   19/19  13/16       2.1mm
 
-190/190 pass · 125/160 two-line tags strut-free · 170ms/tag
+190/190 pass · 115/160 two-line tags strut-free · 272ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
@@ -137,18 +137,22 @@ src/geom/
    one that reads best, and pushing the lines further into each other
    frequently removes a strut altogether.
 
-   Placements are costed by the strut they would still need, as the minimum
-   spanning tree over whatever islands remain. Counting welds alone accepts a
-   position that welds twice and then strands a letter across half the tag,
-   and the strut spanning that gap is the thing that looks wrong. What keeps
-   deeper overlaps honest is the *mutual overlap area*: a weld costs a few
-   square millimetres, two lines marching through each other cost hundreds,
-   which is where the name stops being readable.
+   Readability comes first. A placement is costed mainly by the ink the two
+   lines share, as a fraction of the smaller line, rising steeply past 2%;
+   welds earn credit only up to the two a tag needs. Weighted the other way,
+   a third weld bought several percent more overlap and the lines were pushed
+   until a first name's letters sat inside the surname's, which bold strokes
+   then fused into solid fills. A short strut is cheap next to that.
+
+   Struts are costed twice. The minimum spanning tree over whatever islands
+   remain prices keeping the tag in one piece. And the lines must be tied on
+   two different letter pairs, because one contact is a hinge that snaps: the
+   five best placements are re-ranked by the links that step would really add,
+   each costing more steeply past 2.5mm. Without that the search settled on a
+   single weld and left a long diagonal strut to some distant letter.
 
    A coarse sweep of both axes on heavily decimated outlines, then a local
-   refinement at finer resolution. 117 of 135 test tags need no strut at all;
-   the mean longest strut is 0.4mm. The two lines must still meet in at least
-   two places, because one contact is a hinge that snaps.
+   refinement around each of the leaders at finer resolution.
 6. **Closing.** Morphological closing (dilate then erode by `weldRadius`)
    welds gaps up to `2 × weldRadius` without fattening the letterforms.
 7. **Bridging.** Islands that survive are joined by a minimum spanning tree

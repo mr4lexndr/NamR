@@ -1,15 +1,15 @@
 import type { Font } from './opentype';
-import type { Poly } from './types';
+import type { Contour, Poly } from './types';
 import { bboxOf } from './types';
 import type { Geom } from './clipper';
 import { embolden, substituteMissing, textToContours } from './text';
 import type { Bridge, ConnectOptions } from './connect';
 import {
-  DEFAULT_CONNECT, connect, solveLinePlacement, tightenLine, translateContours,
+  DEFAULT_CONNECT, connect, linkLines, solveLinePlacement, tightenLine, translateContours,
 } from './connect';
 import type { Mesh, SweepOptions } from './sweep';
 import { DEFAULT_SWEEP, meshBounds, sweepTag } from './sweep';
-import { simplifyPolys } from './simplify';
+import { simplifyPolys, simplifyRing } from './simplify';
 
 export type Align = 'center' | 'left' | 'right';
 
@@ -125,12 +125,24 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
     bottom = translateContours(bottom, align, 0);
 
     if (params.overlapY === undefined) {
+      // The links that would really be added to tie the lines on two letter
+      // pairs, each costing more steeply the longer it runs: a short one reads
+      // as part of the script, a long one as a wire across the name.
+      const thin = (cs: Contour[]): Contour[] =>
+        cs.map((c) => ({ ...c, ring: simplifyRing(c.ring, 0.2) })).filter((c) => c.ring.length > 2);
+      const topThin = thin(top), bottomThin = thin(bottom);
+      const linkCost = (dx: number, dy: number): number =>
+        linkLines(topThin, translateContours(bottomThin, dx, dy), geom, conn).bridges
+          .map((b) => Math.hypot(b.a.x - b.b.x, b.a.y - b.b.y))
+          .reduce((sum, len) => sum + len * 1.5 + Math.max(0, len - 2.5) ** 2 * 3, 0);
+
       const spot = solveLinePlacement(
         geom.union(top.map((c) => c.ring)),
         geom.union(bottom.map((c) => c.ring)),
         geom,
         conn,
         simplifyPolys,
+        linkCost,
       );
       overlapY = spot.dy;
       offsetX = spot.dx + params.nudgeX;
