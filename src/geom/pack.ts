@@ -10,7 +10,8 @@ export interface Bed {
   spacing: number;
 }
 
-export const DEFAULT_BED: Bed = { width: 220, depth: 220, margin: 5, spacing: 6 };
+/** Bambu Lab P2S. */
+export const DEFAULT_BED: Bed = { width: 256, depth: 256, margin: 5, spacing: 6 };
 
 export interface Placement {
   index: number;

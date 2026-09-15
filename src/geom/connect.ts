@@ -59,7 +59,7 @@ export const DEFAULT_CONNECT: ConnectOptions = {
   linkSeparation: 14,
   letterTighten: 1.2,
   filletRadius: 0.25,
-  minHoleArea: 4.5,
+  minHoleArea: 1,
 };
 
 export type BridgeKind = 'stem' | 'auto' | 'manual';

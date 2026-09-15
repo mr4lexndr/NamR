@@ -14,7 +14,7 @@ interface Props {
 }
 
 const PRESETS: { label: string; w: number; d: number }[] = [
-  { label: 'Bambu A1 / P1 · 256 × 256', w: 256, d: 256 },
+  { label: 'Bambu P2S / P1S / A1 · 256 × 256', w: 256, d: 256 },
   { label: 'Prusa MK4 · 250 × 210', w: 250, d: 210 },
   { label: 'Ender 3 · 220 × 220', w: 220, d: 220 },
   { label: 'A1 mini · 180 × 180', w: 180, d: 180 },
