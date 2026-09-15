@@ -27,6 +27,7 @@ interface Settings {
   first: string;
   last: string;
   sizeMm: number;
+  weight: number;
   angleDeg: number;
   axisOffset: number;
   weldRadius: number;
@@ -44,6 +45,7 @@ const INITIAL: Settings = {
   first: 'Bożena',
   last: 'Dąbrowa',
   sizeMm: 20,
+  weight: DEFAULT_TAG.weight,
   angleDeg: 60,
   axisOffset: 5,
   weldRadius: DEFAULT_TAG.connect.weldRadius,
@@ -62,6 +64,7 @@ const toParams = (s: Settings): TagParams => ({
   first: s.first,
   last: s.last,
   sizeMm: s.sizeMm,
+  weight: s.weight,
   nudgeX: s.nudgeX,
   overlapY: s.overlapY ?? undefined,
   manualBridges: s.manual,
@@ -267,6 +270,9 @@ export const App = (): React.ReactElement => {
         <Slider label="Font height" unit="mm" min={6} max={60} step={0.5}
           value={s.sizeMm} onChange={(v) => num('sizeMm', v)}
           hint="Type size. The lettering measures a little more, ascenders to descenders." />
+        <Slider label="Stroke weight" unit="mm" min={0} max={1.5} step={0.05}
+          value={s.weight} onChange={(v) => num('weight', v)}
+          hint="Thickens every stroke. About 0.8mm makes a fine face like Savoye LET printable." />
         <Slider label="Sweep angle" unit="°" min={0} max={90} step={1}
           value={s.angleDeg} onChange={(v) => num('angleDeg', v)} />
         <Slider label="Axis offset" unit="mm" min={1} max={40} step={0.5}

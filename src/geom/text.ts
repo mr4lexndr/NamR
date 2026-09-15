@@ -185,4 +185,24 @@ const markSplit = (
   );
 };
 
+/**
+ * Thicken every stroke by `weight` mm, half on each side, with round joins so
+ * curves stay curves. Each glyph's body and its marks grow separately, so a
+ * tittle that swells into its letter is still known as the tittle.
+ */
+export const embolden = (contours: Contour[], weight: number, geom: Geom): Contour[] => {
+  if (weight <= 0) return contours;
+  const parts = new Map<string, Contour[]>();
+  for (const c of contours) {
+    const key = `${c.glyph}:${c.isMark}`;
+    parts.set(key, [...(parts.get(key) ?? []), c]);
+  }
+  return [...parts.values()].flatMap((cs) => {
+    const { glyph, char, line, isMark } = cs[0]!;
+    return geom.offset(geom.union(cs.map((c) => c.ring)), weight / 2)
+      .flatMap((p) => [p.outer, ...p.holes])
+      .map((ring) => ({ ring, glyph, char, line, isMark }));
+  });
+};
+
 export const contoursBBox = (cs: Contour[]) => bboxOf(cs.map((c) => c.ring));

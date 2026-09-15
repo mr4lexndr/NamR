@@ -251,6 +251,12 @@ keeps Savoye LET in a `.ttc` collection and the browser hands over the whole
 file, so `src/geom/sfnt.ts` cuts out the one face by its PostScript name;
 opentype.js reads single fonts only.
 
+Fine faces print poorly as drawn: at a 20mm font height 40% of Savoye LET's
+ink is under 0.8mm wide, two nozzle widths. **Stroke weight** thickens every
+stroke with a round offset before anything is joined, so the welds and line
+placement work on the bolder letters; 0.8mm leaves none of Savoye that thin
+and every test tag still one piece.
+
 Anything else can be loaded from disk, `.ttc` collections included. It is
 parsed in the browser, kept in IndexedDB so it survives a reload, and never
 transmitted — which is also how to use a licensed face you already own, and

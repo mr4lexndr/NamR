@@ -2,7 +2,7 @@ import type { Font } from './opentype';
 import type { Poly } from './types';
 import { bboxOf } from './types';
 import type { Geom } from './clipper';
-import { substituteMissing, textToContours } from './text';
+import { embolden, substituteMissing, textToContours } from './text';
 import type { Bridge, ConnectOptions } from './connect';
 import {
   DEFAULT_CONNECT, connect, solveLinePlacement, tightenLine, translateContours,
@@ -18,6 +18,8 @@ export interface TagParams {
   last: string;
   /** Font height in mm: the type size the lettering is set at. */
   sizeMm: number;
+  /** Millimetres added to the width of every stroke, for faces too fine to print. */
+  weight: number;
   align: Align;
   /** Horizontal nudge of the surname relative to the first name. */
   nudgeX: number;
@@ -37,6 +39,7 @@ export interface TagParams {
 
 export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
   sizeMm: 20,
+  weight: 0,
   align: 'center',
   nudgeX: 0,
   connect: DEFAULT_CONNECT,
@@ -86,7 +89,8 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
   const lineOf = (text: string, idx: number) => {
     const sub = substituteMissing(font, text);
     substituted.push(...sub.substituted);
-    return textToContours(font, sub.text, idx, { sizeMm: em, tolerance: params.flattenTol }, geom);
+    const contours = textToContours(font, sub.text, idx, { sizeMm: em, tolerance: params.flattenTol }, geom);
+    return embolden(contours, params.weight, geom);
   };
 
   // Connection settings are quoted at a 20mm em; scale them so a tag behaves
