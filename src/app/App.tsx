@@ -44,7 +44,7 @@ interface Settings {
 const INITIAL: Settings = {
   first: 'Bożena',
   last: 'Dąbrowa',
-  sizeMm: 20,
+  sizeMm: DEFAULT_TAG.sizeMm,
   weight: DEFAULT_TAG.weight,
   angleDeg: 60,
   axisOffset: 5,

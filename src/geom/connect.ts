@@ -462,8 +462,12 @@ export const linkLines = (
   const bridges: Bridge[] = [];
   if (topContours.length === 0 || bottomContours.length === 0) return { bridges, links: 0 };
 
-  const top = geom.union(topContours.map((c) => c.ring));
-  const bottom = geom.union(bottomContours.map((c) => c.ring));
+  // Accents are left out: one tied to its letter by a thin stem holds the
+  // lines together no better than a hinge, and a link to it looks stuck on.
+  const topBase = topContours.filter((c) => !c.isMark);
+  const bottomBase = bottomContours.filter((c) => !c.isMark);
+  const top = geom.union(topBase.map((c) => c.ring));
+  const bottom = geom.union(bottomBase.map((c) => c.ring));
   if (top.length === 0 || bottom.length === 0) return { bridges, links: 0 };
 
   /** Which letter of a line a point belongs to. */
@@ -488,8 +492,8 @@ export const linkLines = (
       return bestG;
     };
   };
-  const topGlyph = owner(topContours);
-  const bottomGlyph = owner(bottomContours);
+  const topGlyph = owner(topBase);
+  const bottomGlyph = owner(bottomBase);
 
   /**
    * A link is only worth counting once per pair of letters.
@@ -509,7 +513,11 @@ export const linkLines = (
     return true;
   };
 
+  // Only an overlap a weld's width across counts. A hairline touch still
+  // looked like a link, so a tag held by one real join and a graze passed as
+  // tied in two places; the graze now gets a proper link instead.
   for (const patch of intersect(top, bottom, geom)) {
+    if (!geom.survivesErosion([patch], opts.minWeldWidth)) continue;
     const b = bboxOf([patch.outer]);
     noteSite({ x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 });
   }

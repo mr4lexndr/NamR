@@ -40,7 +40,7 @@ export interface TagParams {
 }
 
 export const DEFAULT_TAG: Omit<TagParams, 'first' | 'last'> = {
-  sizeMm: 20,
+  sizeMm: 30,
   weight: 0,
   align: 'center',
   nudgeX: 0,
@@ -149,7 +149,8 @@ export const buildTag = (font: Font, geom: Geom, params: TagParams): TagResult =
       const linkCost = (dx: number, dy: number): number => {
         const found = linkLines(topThin, translateContours(bottomThin, dx, dy), geom, conn);
         return Math.max(0, conn.minLineLinks - found.links) * 200 + found.bridges
-          .map((b) => Math.hypot(b.a.x - b.b.x, b.a.y - b.b.y))
+          // Lengths judged at a 20mm em, like the rest of the connection settings.
+          .map((b) => Math.hypot(b.a.x - b.b.x, b.a.y - b.b.y) / k)
           .reduce((sum, len) => sum + len * 1.5 + Math.max(0, len - 2.5) ** 2 * 3, 0);
       };
 

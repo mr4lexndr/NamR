@@ -48,23 +48,23 @@ Leaving the surname empty gives a one-line tag.
 tags in every bundled face, plus Savoye LET and Brush Script where the
 machine has them. All 190 come out as a single watertight, correctly oriented
 piece, and every two-line tag is held together on at least two different pairs
-of letters. *Short-link* counts tags whose every added link is 2mm or less,
+of letters, at the default 30mm font height. *Short-link* counts tags whose every added link is 2mm or less,
 the length that reads as part of a stroke.
 
 ```
 face          pass   short-link longest link
-AlexBrush     19/19  5/16        3.3mm
-Damion        19/19  8/16        3.5mm
-GreatVibes    19/19  6/16        5.4mm
-Lobster       19/19  8/16        4.4mm
-Norican       19/19  10/16       3.3mm
-Pacifico      19/19  10/16       3.6mm
-Sacramento    19/19  6/16        4.4mm
-Yellowtail    19/19  7/16        3.6mm
-SavoyeLET     19/19  3/16        3.8mm
-BrushScript   19/19  8/16        2.4mm
+AlexBrush     19/19  4/16        4.2mm
+Damion        19/19  4/16        8.0mm
+GreatVibes    19/19  3/16        13.3mm
+Lobster       19/19  5/16        6.8mm
+Norican       19/19  10/16       4.3mm
+Pacifico      19/19  4/16        4.7mm
+Sacramento    19/19  4/16        6.7mm
+Yellowtail    19/19  7/16        4.7mm
+SavoyeLET     19/19  2/16        5.0mm
+BrushScript   19/19  7/16        3.4mm
 
-190/190 pass · 71/160 two-line tags with every link ≤2mm · 204ms/tag
+190/190 pass · 50/160 two-line tags with every link ≤2mm · 233ms/tag
 ```
 
 Whether the lines have been pushed so far into each other that the name stops
